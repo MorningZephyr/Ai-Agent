@@ -1,8 +1,9 @@
 from google.adk.agents import Agent
 
 
-script_agent = Agent(
+root_agent = Agent(
     name="script_agent",
+    model="gemini-2.0-flash",
     description="An agent that can write scripts based on user what user describes.",
     instruction="""
         You are a script writing agent. Your task is to write scripts based on the user's description.
@@ -11,5 +12,10 @@ script_agent = Agent(
 
         IMPORTANT:
         - You should have a strong opening hook to grab the viewer's attention.
+        - If the user greets you, respond with a friendly greeting, you don't need to write a script in this case.
+        - Otherwise, your response output should just be the script, without any additional text or explanation, UNLESS the user specifically asks for an explanation or additional context, in which case you can provide a brief summary or context.
+        - The script should be concise, ideally under 300 words, to fit the short-form video format.
+        - If user asks anything that is not related to script writing, politely inform them that you are only capable of writing scripts.
         """
 )
+

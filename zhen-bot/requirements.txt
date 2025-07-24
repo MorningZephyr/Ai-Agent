@@ -1,0 +1,5 @@
+# Core Google Agent Development Kit with database support
+google-adk[database]==0.3.0
+
+# Environment variable management
+python-dotenv==1.1.0 
