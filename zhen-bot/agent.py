@@ -3,39 +3,52 @@ from google.adk.tools.tool_context import ToolContext
 from datetime import datetime
 import json
 
+CONFIRMATION_KEY = "pending_learning_action"
+
+
+def _ask_for_confirmation(action_type, data, tool_context, prompt):
+    # Store the pending action in state
+    tool_context.state[CONFIRMATION_KEY] = {
+        "action_type": action_type,
+        "data": data,
+        "prompt": prompt,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    return {
+        "action": "ask_confirmation",
+        "message": prompt,
+        "pending_action": tool_context.state[CONFIRMATION_KEY]
+    }
+
+def _check_confirmation(tool_context):
+    # Check if the user has confirmed a pending action
+    confirm = tool_context.input_state.get("confirm_learning", None)
+    return confirm is True
+
+def _clear_pending(tool_context):
+    if CONFIRMATION_KEY in tool_context.state:
+        del tool_context.state[CONFIRMATION_KEY]
+
 
 def learn_about_user(information: str, category: str, tool_context: ToolContext) -> dict:
-    """Learn and store new information about the user.
-    
-    Args:
-        information: The new information to learn about the user
-        category: Category of information (preferences, personality, goals, experiences, etc.)
-        tool_context: Context for accessing and updating session state
-    
-    Returns:
-        Confirmation of what was learned
-    """
-    print(f"--- Learning: {category} - {information} ---")
-    
-    # Get current knowledge base
+    """Learn and store new information about the user, with confirmation."""
+    # If confirmation is not present, ask for it
+    if not _check_confirmation(tool_context):
+        prompt = f"Do you want me to remember this about you: '{information}' (category: {category})? Please reply with 'yes' to confirm."
+        return _ask_for_confirmation("learn_about_user", {"information": information, "category": category}, tool_context, prompt)
+
+    # If confirmed, perform the learning
     knowledge_base = tool_context.state.get("knowledge_base", {})
-    
-    # Ensure category exists
     if category not in knowledge_base:
         knowledge_base[category] = []
-    
-    # Add new information with timestamp
     new_entry = {
         "information": information,
         "learned_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "confidence": 1.0
     }
-    
     knowledge_base[category].append(new_entry)
-    
-    # Update state
     tool_context.state["knowledge_base"] = knowledge_base
-    
+    _clear_pending(tool_context)
     return {
         "action": "learn_about_user",
         "category": category,
@@ -45,33 +58,19 @@ def learn_about_user(information: str, category: str, tool_context: ToolContext)
 
 
 def update_user_preference(preference_type: str, preference_value: str, tool_context: ToolContext) -> dict:
-    """Update or add a user preference.
-    
-    Args:
-        preference_type: Type of preference (food, music, activities, communication_style, etc.)
-        preference_value: The preference value
-        tool_context: Context for accessing and updating session state
-    
-    Returns:
-        Confirmation of the preference update
-    """
-    print(f"--- Updating Preference: {preference_type} = {preference_value} ---")
-    
-    # Get current preferences
+    """Update or add a user preference, with confirmation."""
+    if not _check_confirmation(tool_context):
+        prompt = f"Do you want me to remember your preference: {preference_type} = {preference_value}? Please reply with 'yes' to confirm."
+        return _ask_for_confirmation("update_user_preference", {"preference_type": preference_type, "preference_value": preference_value}, tool_context, prompt)
+
     preferences = tool_context.state.get("user_preferences", {})
-    
-    # Store old value if exists
     old_value = preferences.get(preference_type, "not set")
-    
-    # Update preference
     preferences[preference_type] = {
         "value": preference_value,
         "updated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    
-    # Update state
     tool_context.state["user_preferences"] = preferences
-    
+    _clear_pending(tool_context)
     return {
         "action": "update_preference",
         "preference_type": preference_type,
@@ -82,38 +81,23 @@ def update_user_preference(preference_type: str, preference_value: str, tool_con
 
 
 def remember_conversation_topic(topic: str, key_points: str, tool_context: ToolContext) -> dict:
-    """Remember important topics and key points from our conversations.
-    
-    Args:
-        topic: The main topic discussed
-        key_points: Key points or important details from the conversation
-        tool_context: Context for accessing and updating session state
-    
-    Returns:
-        Confirmation of what was remembered
-    """
-    print(f"--- Remembering Topic: {topic} ---")
-    
-    # Get conversation history
+    """Remember important topics and key points from our conversations, with confirmation."""
+    if not _check_confirmation(tool_context):
+        prompt = f"Do you want me to remember our conversation about '{topic}'? Please reply with 'yes' to confirm."
+        return _ask_for_confirmation("remember_conversation_topic", {"topic": topic, "key_points": key_points}, tool_context, prompt)
+
     conversation_memory = tool_context.state.get("conversation_memory", [])
-    
-    # Add new conversation memory
     memory_entry = {
         "topic": topic,
         "key_points": key_points,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "session_context": len(conversation_memory) + 1
     }
-    
     conversation_memory.append(memory_entry)
-    
-    # Keep only last 50 conversation memories to avoid bloat
     if len(conversation_memory) > 50:
         conversation_memory = conversation_memory[-50:]
-    
-    # Update state
     tool_context.state["conversation_memory"] = conversation_memory
-    
+    _clear_pending(tool_context)
     return {
         "action": "remember_conversation",
         "topic": topic,
@@ -123,30 +107,18 @@ def remember_conversation_topic(topic: str, key_points: str, tool_context: ToolC
 
 
 def update_personal_context(context_type: str, context_value: str, tool_context: ToolContext) -> dict:
-    """Update personal context information about the user.
-    
-    Args:
-        context_type: Type of context (current_project, mood, goals, challenges, etc.)
-        context_value: The context information
-        tool_context: Context for accessing and updating session state
-    
-    Returns:
-        Confirmation of the context update
-    """
-    print(f"--- Updating Context: {context_type} = {context_value} ---")
-    
-    # Get current context
+    """Update personal context information about the user, with confirmation."""
+    if not _check_confirmation(tool_context):
+        prompt = f"Do you want me to remember your {context_type}: {context_value}? Please reply with 'yes' to confirm."
+        return _ask_for_confirmation("update_personal_context", {"context_type": context_type, "context_value": context_value}, tool_context, prompt)
+
     personal_context = tool_context.state.get("personal_context", {})
-    
-    # Update context
     personal_context[context_type] = {
         "value": context_value,
         "updated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    
-    # Update state
     tool_context.state["personal_context"] = personal_context
-    
+    _clear_pending(tool_context)
     return {
         "action": "update_context",
         "context_type": context_type,
@@ -156,19 +128,11 @@ def update_personal_context(context_type: str, context_value: str, tool_context:
 
 
 def get_my_knowledge_summary(tool_context: ToolContext) -> dict:
-    """Get a summary of what I know about the user.
-    
-    Args:
-        tool_context: Context for accessing session state
-    
-    Returns:
-        Summary of known information about the user
-    """
+    """Get a summary of what I know about the user."""
     knowledge_base = tool_context.state.get("knowledge_base", {})
     preferences = tool_context.state.get("user_preferences", {})
     personal_context = tool_context.state.get("personal_context", {})
     conversation_memory = tool_context.state.get("conversation_memory", [])
-    
     summary = {
         "knowledge_categories": list(knowledge_base.keys()),
         "total_facts_learned": sum(len(facts) for facts in knowledge_base.values()),
@@ -177,7 +141,6 @@ def get_my_knowledge_summary(tool_context: ToolContext) -> dict:
         "conversation_topics_remembered": len(conversation_memory),
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    
     return {
         "action": "knowledge_summary",
         "summary": summary,
