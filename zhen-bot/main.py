@@ -1,6 +1,5 @@
 import asyncio
-import uuid
-
+import warnings
 from dotenv import load_dotenv
 from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
@@ -9,220 +8,147 @@ from agent import root_agent
 
 load_dotenv()
 
-# ===== PERSISTENT STORAGE SETUP =====
-# Using SQLite database for persistent storage
+# Suppress the ADK framework warning about non-text parts in responses
+# This warning occurs when the agent uses tools and is expected behavior
+warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
+
 DB_URL = "sqlite:///./zhen_bot_memory.db"
 session_service = DatabaseSessionService(db_url=DB_URL)
 
-# ===== INITIAL STATE SETUP =====
-def initialize_zhen_bot_state():
-    """Initialize the session state with default values for Zhen Bot."""
+def initial_zhen_bot_state():
     return {
-        "user_name": "Zhen",
-        "knowledge_base": {},
-        "user_preferences": {},
-        "personal_context": {},
-        "conversation_memory": [],
-        "interaction_count": 0,
-        "first_interaction_date": None
+        "is_zhen": True  # Set to True when Zhen is using the bot, False for others
     }
 
-async def call_agent_async(runner, user_id, session_id, query):
-    """Call the agent asynchronously with the user's query."""
+async def call_agent_async(runner, user_id, session_id, query, session_service=None):
     content = types.Content(role="user", parts=[types.Part(text=query)])
-    
-    print(f"\n🤖 Processing: {query}")
-    print("-" * 50)
-    
-    final_response_text = None
-    
     try:
         async for event in runner.run_async(
-            user_id=user_id, 
-            session_id=session_id, 
+            user_id=user_id,
+            session_id=session_id,
             new_message=content
         ):
+            # DEBUG: Show ALL events, not just final response (commented out for clean output)
+            # print(f"\n📡 EVENT TYPE: {type(event).__name__}")
+            # print(f"   Is final: {event.is_final_response()}")
+            # 
+            # # Check if this event has candidates (raw model response)
+            # if hasattr(event, 'candidates'):
+            #     print(f"   Has candidates: True")
+            #     if event.candidates:
+            #         for i, candidate in enumerate(event.candidates):
+            #             print(f"   Candidate {i} content parts:")
+            #             if hasattr(candidate, 'content') and candidate.content:
+            #                 print(f"     {candidate.content.parts}")
+            # else:
+            #     print(f"   Has candidates: False")
+            
             if event.is_final_response():
                 if event.content and event.content.parts:
-                    final_response_text = event.content.parts[0].text
-                    print(f"🎯 Zhen Bot: {final_response_text}")
+                    # DEBUG: Show the raw parts (commented out for clean output)
+                    # print(f"\n🔍 FINAL event.content.parts:")
+                    # print(event.content.parts)
                     
+                    # DEBUG: Check session state (commented out for clean output) 
+                    # print("🔧 DEBUG: About to check session state...")
+                    # if session_service:
+                    #     try:
+                    #         print("🔧 DEBUG: session_service exists, calling get_session...")
+                    #         current_session = await session_service.get_session(
+                    #             app_name="Zhen Bot",
+                    #             user_id=user_id, 
+                    #             session_id=session_id
+                    #         )
+                    #         print(f"\n💾 CURRENT SESSION STATE:")
+                    #         print(f"   {current_session.state}")
+                    #     except Exception as e:
+                    #         print(f"   ❌ Could not retrieve session state: {e}")
+                    # else:
+                    #     print("🔧 DEBUG: session_service is None!")
+                    
+                    # Handle responses that may contain both text and function calls
+                    text_parts = []
+                    for part in event.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_parts.append(part.text)
+                    
+                    if text_parts:
+                        response_text = ' '.join(text_parts)
+                        print(f"Zhen-Bot: {response_text}")
+                    else:
+                        # If no text parts, the agent might have only made tool calls
+                        print("Zhen-Bot: [Processing your request...]")
+                        
     except Exception as e:
-        print(f"❌ Error during agent run: {e}")
-        
-    return final_response_text
-
-def display_session_summary(session_service, app_name, user_id, session_id):
-    """Display a summary of what the bot has learned."""
-    try:
-        session = session_service.get_session(
-            app_name=app_name, 
-            user_id=user_id, 
-            session_id=session_id
-        )
-        
-        state = session.state
-        knowledge_base = state.get("knowledge_base", {})
-        preferences = state.get("user_preferences", {})
-        conversation_memory = state.get("conversation_memory", [])
-        interaction_count = state.get("interaction_count", 0)
-        
-        print("\n" + "="*60)
-        print("📊 ZHEN BOT LEARNING SUMMARY")
-        print("="*60)
-        print(f"💬 Total Interactions: {interaction_count}")
-        print(f"🧠 Knowledge Categories: {len(knowledge_base)}")
-        print(f"⚙️  Preferences Learned: {len(preferences)}")
-        print(f"📝 Conversations Remembered: {len(conversation_memory)}")
-        
-        if knowledge_base:
-            print(f"\n🔍 Knowledge Categories:")
-            for category, facts in knowledge_base.items():
-                print(f"   • {category}: {len(facts)} facts")
-                
-        if preferences:
-            print(f"\n⭐ Preferences Set:")
-            for pref_type, pref_data in preferences.items():
-                value = pref_data.get('value', 'Unknown') if isinstance(pref_data, dict) else pref_data
-                print(f"   • {pref_type}: {value}")
-                
-        print("="*60)
-        
-    except Exception as e:
-        print(f"❌ Error displaying summary: {e}")
+        print(f"Error: {e}")
 
 async def main_async():
-    # Setup constants
     APP_NAME = "Zhen Bot"
     USER_ID = "zhen"
-    
-    print("🚀 Starting Zhen Bot - Your Personal Learning AI Assistant")
-    print("="*60)
-    
-    # ===== SESSION MANAGEMENT =====
-    # Check for existing sessions for this user
     try:
-        existing_sessions = session_service.list_sessions(
+        existing_sessions = await session_service.list_sessions(
             app_name=APP_NAME,
             user_id=USER_ID,
         )
-        
-        # If there's an existing session, use it, otherwise create a new one
+        print(f"Existing sessions: {existing_sessions}")
         if existing_sessions and len(existing_sessions.sessions) > 0:
-            # Use the most recent session
+            print(f"Found existing session: {existing_sessions.sessions[0].id}")
             SESSION_ID = existing_sessions.sessions[0].id
-            print(f"📚 Continuing existing session: {SESSION_ID}")
-            print("🧠 I remember our previous conversations!")
         else:
-            # Create a new session with initial state
-            initial_state = initialize_zhen_bot_state()
-            new_session = session_service.create_session(
+            print("No existing session found, creating new session")
+            initial_state = initial_zhen_bot_state()
+            new_session = await session_service.create_session(
                 app_name=APP_NAME,
                 user_id=USER_ID,
                 state=initial_state,
             )
             SESSION_ID = new_session.id
-            print(f"✨ Created new session: {SESSION_ID}")
-            print("👋 Nice to meet you! I'm here to learn about you and become your personalized assistant.")
-            
     except Exception as e:
-        print(f"❌ Error with session management: {e}")
-        # Fallback to new session
-        SESSION_ID = str(uuid.uuid4())
-        initial_state = initialize_zhen_bot_state()
-        session_service.create_session(
+        print(f"Session error: {e}")
+        return
+    
+    # Get the current session state to check the mode
+    try:
+        current_session = await session_service.get_session(
             app_name=APP_NAME,
             user_id=USER_ID,
-            session_id=SESSION_ID,
-            state=initial_state,
+            session_id=SESSION_ID
         )
-        print(f"🔄 Created fallback session: {SESSION_ID}")
-
-    # ===== AGENT RUNNER SETUP =====
+        is_zhen = current_session.state.get("is_zhen", False)
+        
+        if is_zhen:
+            mode_message = "Learning mode enabled (you can teach me about Zhen)"
+        else:
+            mode_message = "Sharing mode enabled (I can answer questions about Zhen)"
+            
+    except Exception as e:
+        print(f"Could not determine mode: {e}")
+        mode_message = "Mode unknown"
+    
     runner = Runner(
         agent=root_agent,
         app_name=APP_NAME,
         session_service=session_service,
     )
-
-    # ===== INTERACTIVE CONVERSATION LOOP =====
-    print("\n💡 Tips:")
-    print("   • Share your interests, preferences, and current projects")
-    print("   • I'll remember everything and become more personalized over time")
-    print("   • Type 'summary' to see what I've learned about you")
-    print("   • Type 'exit' or 'quit' to end our conversation")
-    print("\n" + "-"*60)
-
+    print("Type your message (or 'exit' to quit):")
+    print(f"Note: {mode_message}")
     while True:
         try:
-            # Get user input
-            user_input = input("\n💬 You: ").strip()
-
-            # Check for special commands
+            user_input = input("You: ").strip()
             if user_input.lower() in ["exit", "quit", "bye", "goodbye"]:
-                print("\n👋 Thanks for chatting! I'll remember everything for next time.")
-                display_session_summary(session_service, APP_NAME, USER_ID, SESSION_ID)
+                print("Goodbye!")
                 break
-                
-            elif user_input.lower() == "summary":
-                display_session_summary(session_service, APP_NAME, USER_ID, SESSION_ID)
+            if not user_input:
                 continue
-                
-            elif user_input.lower() in ["help", "commands"]:
-                print("\n🔧 Available Commands:")
-                print("   • 'summary' - See what I've learned about you")
-                print("   • 'exit', 'quit', 'bye' - End the conversation")
-                print("   • 'help', 'commands' - Show this help message")
-                print("   • Just chat normally and I'll learn from our conversation!")
-                continue
-                
-            elif not user_input:
-                print("   (Please type something to continue our conversation)")
-                continue
-
-            # Update interaction count
-            try:
-                session = session_service.get_session(
-                    app_name=APP_NAME, 
-                    user_id=USER_ID, 
-                    session_id=SESSION_ID
-                )
-                current_count = session.state.get("interaction_count", 0)
-                updated_state = session.state.copy()
-                updated_state["interaction_count"] = current_count + 1
-                
-                # Set first interaction date if not set
-                if not updated_state.get("first_interaction_date"):
-                    from datetime import datetime
-                    updated_state["first_interaction_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                session_service.create_session(
-                    app_name=APP_NAME,
-                    user_id=USER_ID,
-                    session_id=SESSION_ID,
-                    state=updated_state,
-                )
-            except Exception as e:
-                print(f"⚠️  Warning: Could not update interaction count: {e}")
-
-            # Process the user query through the agent
-            await call_agent_async(runner, USER_ID, SESSION_ID, user_input)
-
+            await call_agent_async(runner, USER_ID, SESSION_ID, user_input, session_service)
         except KeyboardInterrupt:
-            print("\n\n👋 Conversation interrupted. I'll remember everything for next time!")
-            display_session_summary(session_service, APP_NAME, USER_ID, SESSION_ID)
+            print("\nGoodbye!")
             break
         except Exception as e:
-            print(f"❌ An unexpected error occurred: {e}")
-            print("💪 But don't worry, I'll keep trying to help you!")
+            print(f"Error: {e}")
 
 def main():
-    """Main entry point for the Zhen Bot."""
-    try:
-        asyncio.run(main_async())
-    except Exception as e:
-        print(f"❌ Failed to start Zhen Bot: {e}")
-        print("🔧 Please check your setup and try again.")
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main() 

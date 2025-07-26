@@ -1,244 +1,104 @@
 from google.adk.agents import Agent
 from google.adk.tools.tool_context import ToolContext
-from datetime import datetime
-import json
 
-CONFIRMATION_KEY = "pending_learning_action"
-
-
-def _ask_for_confirmation(action_type, data, tool_context, prompt):
-    # Store the pending action in state
-    tool_context.state[CONFIRMATION_KEY] = {
-        "action_type": action_type,
-        "data": data,
-        "prompt": prompt,
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+def learn_about_zhen(key: str, value: str, tool_context: ToolContext) -> dict:
+    """Learn and store new information about Zhen with a descriptive key.
+    
+    Use this tool when you discover new facts about Zhen during conversation.
+    Choose clear, descriptive keys that categorize the information appropriately.
+    SECURITY: This tool can only be used when talking to the real Zhen.
+    
+    Args:
+        key (str): A descriptive identifier for the type of information being stored.
+             Use snake_case format. Examples: 'birthday', 'favorite_color', 
+             'hometown', 'university', 'favorite_food', 'pet_name', 'hobby',
+             'profession', 'favorite_book', 'dream_destination', etc.
+        value (str): The actual information or fact about Zhen. Be specific and accurate.
+               Examples: '2005-01-18', 'red', 'China', 'Hunter College', 'sushi'
+    
+    Returns:
+        dict: A dictionary containing:
+            - status: Operation outcome ('success', 'error', 'updated', 'unauthorized')
+            - action: The name of the action performed ('learn_about_zhen')
+            - key: The key that was used to store the information (if authorized)
+            - old_value: The previous value (if any) that was replaced (if authorized)
+            - new_value: The new value that was stored (if authorized)
+            - message: A human-readable confirmation message
+            - is_update: Boolean indicating if this was updating existing information (if authorized)
+    
+    Examples:
+        - If someone says "Zhen was born on January 18, 2005":
+          Call learn_about_zhen('birthday', '2005-01-18', tool_context)
+        - If someone says "Zhen loves pizza":
+          Call learn_about_zhen('favorite_food', 'pizza', tool_context)
+        - If someone says "Zhen studies at MIT":
+          Call learn_about_zhen('university', 'MIT', tool_context)
+    """
+    # SECURITY CHECK: Only allow learning if the current user is Zhen
+    is_zhen = tool_context.state.get("is_zhen", False)
+    
+    if not is_zhen:
+        return {
+            "status": "unauthorized",
+            "action": "learn_about_zhen",
+            "message": "I can only learn new information about Zhen when I'm talking to Zhen directly. Others cannot update information about Zhen for security reasons.",
+            "error": "Unauthorized: Only Zhen can update information about Zhen"
+        }
+    
+    old_value = tool_context.state.get(key)
+    tool_context.state[key] = value
+    
+    # Determine if this is new information or an update
+    is_update = old_value is not None
+    status = "updated" if is_update else "success"
+    
+    # Create descriptive message for the LLM
+    if is_update:
+        message = f"Successfully updated Zhen's {key.replace('_', ' ')} from '{old_value}' to '{value}'"
+    else:
+        message = f"Successfully learned new information: Zhen's {key.replace('_', ' ')} is '{value}'"
+    
     return {
-        "action": "ask_confirmation",
-        "message": prompt,
-        "pending_action": tool_context.state[CONFIRMATION_KEY]
-    }
-
-def _check_confirmation(tool_context):
-    # Check if the user has confirmed a pending action
-    confirm = tool_context.input_state.get("confirm_learning", None)
-    return confirm is True
-
-def _clear_pending(tool_context):
-    if CONFIRMATION_KEY in tool_context.state:
-        del tool_context.state[CONFIRMATION_KEY]
-
-
-def learn_about_user(information: str, category: str, tool_context: ToolContext) -> dict:
-    """Learn and store new information about the user, with confirmation."""
-    # If confirmation is not present, ask for it
-    if not _check_confirmation(tool_context):
-        prompt = f"Do you want me to remember this about you: '{information}' (category: {category})? Please reply with 'yes' to confirm."
-        return _ask_for_confirmation("learn_about_user", {"information": information, "category": category}, tool_context, prompt)
-
-    # If confirmed, perform the learning
-    knowledge_base = tool_context.state.get("knowledge_base", {})
-    if category not in knowledge_base:
-        knowledge_base[category] = []
-    new_entry = {
-        "information": information,
-        "learned_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "confidence": 1.0
-    }
-    knowledge_base[category].append(new_entry)
-    tool_context.state["knowledge_base"] = knowledge_base
-    _clear_pending(tool_context)
-    return {
-        "action": "learn_about_user",
-        "category": category,
-        "information": information,
-        "message": f"I've learned that {information} (category: {category})"
-    }
-
-
-def update_user_preference(preference_type: str, preference_value: str, tool_context: ToolContext) -> dict:
-    """Update or add a user preference, with confirmation."""
-    if not _check_confirmation(tool_context):
-        prompt = f"Do you want me to remember your preference: {preference_type} = {preference_value}? Please reply with 'yes' to confirm."
-        return _ask_for_confirmation("update_user_preference", {"preference_type": preference_type, "preference_value": preference_value}, tool_context, prompt)
-
-    preferences = tool_context.state.get("user_preferences", {})
-    old_value = preferences.get(preference_type, "not set")
-    preferences[preference_type] = {
-        "value": preference_value,
-        "updated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    tool_context.state["user_preferences"] = preferences
-    _clear_pending(tool_context)
-    return {
-        "action": "update_preference",
-        "preference_type": preference_type,
+        "status": status,
+        "action": "learn_about_zhen",
+        "key": key,
         "old_value": old_value,
-        "new_value": preference_value,
-        "message": f"Updated your {preference_type} preference to: {preference_value}"
+        "new_value": value,
+        "is_update": is_update,
+        "message": message,
+        "summary": f"Stored '{key}': '{value}'" + (f" (previously: '{old_value}')" if is_update else " (new)")
     }
 
-
-def remember_conversation_topic(topic: str, key_points: str, tool_context: ToolContext) -> dict:
-    """Remember important topics and key points from our conversations, with confirmation."""
-    if not _check_confirmation(tool_context):
-        prompt = f"Do you want me to remember our conversation about '{topic}'? Please reply with 'yes' to confirm."
-        return _ask_for_confirmation("remember_conversation_topic", {"topic": topic, "key_points": key_points}, tool_context, prompt)
-
-    conversation_memory = tool_context.state.get("conversation_memory", [])
-    memory_entry = {
-        "topic": topic,
-        "key_points": key_points,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "session_context": len(conversation_memory) + 1
-    }
-    conversation_memory.append(memory_entry)
-    if len(conversation_memory) > 50:
-        conversation_memory = conversation_memory[-50:]
-    tool_context.state["conversation_memory"] = conversation_memory
-    _clear_pending(tool_context)
-    return {
-        "action": "remember_conversation",
-        "topic": topic,
-        "key_points": key_points,
-        "message": f"I've remembered our conversation about {topic}"
-    }
-
-
-def update_personal_context(context_type: str, context_value: str, tool_context: ToolContext) -> dict:
-    """Update personal context information about the user, with confirmation."""
-    if not _check_confirmation(tool_context):
-        prompt = f"Do you want me to remember your {context_type}: {context_value}? Please reply with 'yes' to confirm."
-        return _ask_for_confirmation("update_personal_context", {"context_type": context_type, "context_value": context_value}, tool_context, prompt)
-
-    personal_context = tool_context.state.get("personal_context", {})
-    personal_context[context_type] = {
-        "value": context_value,
-        "updated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    tool_context.state["personal_context"] = personal_context
-    _clear_pending(tool_context)
-    return {
-        "action": "update_context",
-        "context_type": context_type,
-        "context_value": context_value,
-        "message": f"Updated your {context_type}: {context_value}"
-    }
-
-
-def get_my_knowledge_summary(tool_context: ToolContext) -> dict:
-    """Get a summary of what I know about the user."""
-    knowledge_base = tool_context.state.get("knowledge_base", {})
-    preferences = tool_context.state.get("user_preferences", {})
-    personal_context = tool_context.state.get("personal_context", {})
-    conversation_memory = tool_context.state.get("conversation_memory", [])
-    summary = {
-        "knowledge_categories": list(knowledge_base.keys()),
-        "total_facts_learned": sum(len(facts) for facts in knowledge_base.values()),
-        "preferences_set": list(preferences.keys()),
-        "current_context": list(personal_context.keys()),
-        "conversation_topics_remembered": len(conversation_memory),
-        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    return {
-        "action": "knowledge_summary",
-        "summary": summary,
-        "message": "Here's a summary of what I know about you"
-    }
-
-
-# Create the Zhen Bot agent
 root_agent = Agent(
     name="zhen_bot",
     model="gemini-2.0-flash",
-    description="A personalized AI assistant that learns and adapts to represent Zhen through interactions",
+    description=(
+        "Zhen-Bot is a digital entity that represents Zhen. "
+        "When talking to Zhen, it learns new facts about Zhen. "
+        "When talking to others, it answers questions about Zhen using what it has learned."
+    ),
     instruction="""
-    You are Zhen Bot, a personalized AI assistant designed to learn about and represent Zhen through your interactions.
-    Your primary goal is to become increasingly personalized and helpful by learning from every conversation.
+    You are Zhen-Bot, a digital representative of Zhen.
 
-    **Current Knowledge About Zhen:**
+    There are two modes based on who you're talking to:
     
-    **User Preferences:**
-    {user_preferences}
+    1. **Learning Mode (talking to Zhen):**
+       - When you are interacting with Zhen (the real person), listen for new facts about Zhen and use the learn_about_zhen tool to store them.
+       - Choose a clear, descriptive key for each fact (e.g., 'birthday', 'favorite_color', 'hometown', etc.).
+       - Confirm with Zhen before saving any new fact.
+       - Only Zhen can update information about Zhen for security reasons.
+
+    2. **Sharing Mode (talking to others):**
+       - When you are interacting with someone else, answer their questions about Zhen using the information you have learned.
+       - If you don't know something, say so.
+       - Make it clear you are Zhen-Bot, not the real Zhen.
+       - Do NOT allow others to update or add information about Zhen. If someone tries, politely explain that only Zhen can update information about Zhen.
+
+    The session state contains an 'is_zhen' flag that tells you who you're talking to:
+    - is_zhen = true: You're talking to the real Zhen (Learning Mode)
+    - is_zhen = false: You're talking to someone else (Sharing Mode)
     
-    **Knowledge Base:**
-    {knowledge_base}
-    
-    **Personal Context:**
-    {personal_context}
-    
-    **Recent Conversation Memory:**
-    {conversation_memory}
-
-    **Core Capabilities:**
-
-    1. **Active Learning**: Continuously learn from conversations by:
-       - Picking up on preferences, interests, and personality traits
-       - Remembering important personal information
-       - Understanding communication style preferences
-       - Learning about current projects, goals, and challenges
-
-    2. **Adaptive Personality**: 
-       - Mirror Zhen's communication style over time
-       - Adapt your responses based on learned preferences
-       - Become more familiar and personalized with each interaction
-
-    3. **Contextual Memory**:
-       - Remember previous conversations and their context
-       - Build upon past discussions
-       - Reference relevant past interactions when appropriate
-
-    4. **Proactive Learning**:
-       - Ask clarifying questions to learn more when appropriate
-       - Suggest ways to be more helpful based on what you know
-       - Use tools to store and organize learned information
-
-    **Learning Guidelines:**
-
-    1. **When to Use Learning Tools:**
-       - Use `learn_about_user` for factual information about Zhen (interests, background, experiences)
-       - Use `update_user_preference` for specific preferences (communication style, tools, approaches)
-       - Use `remember_conversation_topic` for important discussion topics and their key points
-       - Use `update_personal_context` for current situation, projects, mood, goals
-
-    2. **What to Learn:**
-       - Professional background and expertise
-       - Interests and hobbies
-       - Communication preferences
-       - Current projects and goals
-       - Problem-solving approaches
-       - Personality traits and values
-       - Favorite tools, technologies, or methods
-
-    3. **How to Learn:**
-       - Listen actively to what Zhen shares
-       - Ask follow-up questions naturally in conversation
-       - Notice patterns in communication style and preferences
-       - Remember context from previous conversations
-
-    **Interaction Style:**
-    - Be genuinely curious about Zhen as a person
-    - Ask thoughtful follow-up questions
-    - Reference past conversations when relevant
-    - Adapt your communication style to match preferences
-    - Be proactive in offering help based on what you know
-    - Show that you remember and care about Zhen's interests and goals
-
-    **Important Notes:**
-    - ALWAYS use the learning tools when you discover new information about Zhen
-    - Be natural and conversational - don't make learning feel mechanical
-    - Respect privacy - only learn what Zhen willingly shares
-    - Use learned information to provide increasingly personalized assistance
-    - Build genuine rapport through consistent memory and personalization
-
-    Your ultimate goal is to become the most helpful, personalized AI assistant for Zhen by truly understanding their preferences, style, and needs through active learning and adaptation.
+    Always respect this security boundary to protect Zhen's information from false or harmful updates.
     """,
-    tools=[
-        learn_about_user,
-        update_user_preference,
-        remember_conversation_topic,
-        update_personal_context,
-        get_my_knowledge_summary
-    ]
+    tools=[learn_about_zhen]
 )
