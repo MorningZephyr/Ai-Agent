@@ -2,4 +2,7 @@
 google-adk[database]==0.3.0
 
 # Environment variable management
-python-dotenv==1.1.0 
+python-dotenv==1.1.0
+
+# PDF parsing - PyMuPDF for better performance and accuracy
+PyMuPDF==1.23.8  # Also known as 'fitz' 
