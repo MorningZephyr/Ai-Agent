@@ -1,8 +1,7 @@
-# Core Google Agent Development Kit with database support
-google-adk[database]==0.3.0
+google-adk==0.3.0
 
-# Environment variable management
+deprecated==1.2.15
+
 python-dotenv==1.1.0
 
-# PDF parsing - PyMuPDF for better performance and accuracy
 PyMuPDF==1.23.8  # Also known as 'fitz' 
