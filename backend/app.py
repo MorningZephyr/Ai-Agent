@@ -1,65 +1,99 @@
-import sys
-import os
 import asyncio
+import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import DatabaseSessionService
+from google.adk.tools.tool_context import ToolContext
+from google.genai import types
+import warnings
 
-# Add the parent directory to the path so we can import from zhen-bot
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# Load environment variables
+load_dotenv()
 
-# Import your existing zhen-bot components
-# Note: We'll implement the full agent integration after testing the basic endpoint
-# from zhen_bot.agent import root_agent
-# from zhen_bot.main import call_agent_async, session_service, initial_zhen_bot_state
-# from google.adk.runners import Runner
-# from google.genai import types
+# Suppress ADK framework warnings
+warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
 
 # Create Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend communication
+CORS(app)
+
+# Simple tool for learning about Zhen
+def learn_about_zhen(key: str, value: str, tool_context: ToolContext) -> dict:
+    """Learn and store information about Zhen."""
+    # Store in session state
+    tool_context.state[key] = value
+    return {
+        "status": "learned",
+        "message": f"Learned: {key} = {value}",
+        "key": key,
+        "value": value
+    }
+
+# Create a simple Zhen Bot agent
+zhen_bot = Agent(
+    name="zhen_bot",
+    model="gemini-2.0-flash",
+    description="Zhen-Bot is a digital representative.",
+    instruction="""
+    You are Zhen-Bot, a helpful AI assistant. 
+    Be friendly and conversational.
+    If someone tells you facts about Zhen, use the learn_about_zhen tool to remember them.
+    """,
+    tools=[learn_about_zhen]
+)
+
+# Simple session service
+try:
+    session_service = DatabaseSessionService(db_url="sqlite:///./simple_bot.db")
+    print("✅ Database session service created")
+except Exception as e:
+    print(f"❌ Error creating session service: {e}")
+    session_service = None
 
 @app.route('/')
 def home():
     return jsonify({
-        "message": "Zhen-Bot API is running!",
-        "status": "healthy",
+        "message": "Simple Zhen-Bot Backend",
+        "status": "running",
         "version": "1.0.0"
     })
 
-@app.route('/health')
-def health_check():
+@app.route('/test', methods=['GET'])
+def test():
+    """Test endpoint to verify backend is working"""
     return jsonify({
-        "status": "healthy",
-        "service": "zhen-bot-api"
+        "message": "Backend is working!",
+        "session_service": "available" if session_service else "unavailable"
     })
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    """Simple chat endpoint"""
     try:
-        # Get the request data
         data = request.get_json()
         if not data or 'message' not in data:
             return jsonify({'error': 'No message provided'}), 400
         
         user_message = data['message']
-        user_id = data.get('user_id', 'web_user')
-        is_zhen = data.get('is_zhen', False)  # For learning vs sharing mode
         
-        # For now, we'll create a simple test response
-        # We'll implement the full agent integration in the next step
-        response_text = f"Echo: {user_message} (from user: {user_id}, is_zhen: {is_zhen})"
+        # Simple response without complex session management for now
+        response = f"Echo: {user_message}"
         
         return jsonify({
-            'response': response_text,
-            'user_id': user_id,
-            'is_zhen': is_zhen
+            'response': response,
+            'status': 'success'
         })
         
     except Exception as e:
+        print(f"❌ Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting Zhen-Bot API server...")
-    print("📡 Server will be available at: http://localhost:5000")
-    print("💬 Chat endpoint: POST /chat")
+    print("🚀 Starting Simple Zhen-Bot Backend...")
+    print("📡 Backend: http://localhost:5000")
+    print("🧪 Test: GET /test")
+    print("💬 Chat: POST /chat")
     app.run(debug=True, host='0.0.0.0', port=5000)
