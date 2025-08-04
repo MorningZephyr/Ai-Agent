@@ -1,5 +1,6 @@
 .venv/
 .env
 __pycache__
-testing.py
+
 zhen_bot_memory.db
+.vscode/
