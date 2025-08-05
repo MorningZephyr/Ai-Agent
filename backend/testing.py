@@ -1,4 +1,5 @@
 import asyncio
+import os
 import warnings
 from dotenv import load_dotenv
 from google.adk.agents import Agent
@@ -13,8 +14,9 @@ load_dotenv()
 # Suppress ADK framework warnings
 warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
 
-# Database configuration for persistence
-DB_URL = "sqlite:///./zhen_bot_memory.db"
+# Database configuration for persistence (PostgreSQL)
+# Reads from .env file - update DB_URL in .env with your actual database credentials
+DB_URL = os.getenv("DB_URL", "postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot_production")
 
 def learn_about_zhen(key: str, value: str, tool_context: ToolContext) -> dict:
     """Learn and store information about Zhen with session persistence."""

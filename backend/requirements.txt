@@ -13,5 +13,8 @@ google-adk==0.3.0
 # Supporting packages for ADK
 deprecated==1.2.15
 
+# PostgreSQL database adapter
+psycopg2-binary==2.9.10
+
 # PDF processing (if needed)
 PyMuPDF==1.23.8
