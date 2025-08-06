@@ -1,7 +1,0 @@
-google-adk==0.3.0
-
-deprecated==1.2.15
-
-python-dotenv==1.1.0
-
-PyMuPDF==1.23.8  # Also known as 'fitz' 
