@@ -1,8 +1,6 @@
-# Flask web framework
-Flask==3.1.1
-
-# CORS support for frontend communication
-Flask-CORS==6.0.1
+# FastAPI web framework for modern async API
+fastapi==0.111.0
+uvicorn==0.30.0
 
 # Environment variables
 python-dotenv==1.1.0
