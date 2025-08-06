@@ -1,6 +1,5 @@
 import asyncio
 import os
-import warnings
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -11,15 +10,23 @@ from google.genai import types
 # Load environment variables
 load_dotenv()
 
-# Suppress ADK framework warnings
-warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
-
 # Database configuration for persistence (PostgreSQL)
-# Reads from .env file - update DB_URL in .env with your actual database credentials
 DB_URL = os.getenv("DB_URL", "postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot_production")
 
 def learn_about_zhen(key: str, value: str, tool_context: ToolContext) -> dict:
-    """Learn and store information about Zhen with session persistence."""
+    """Store personal facts about Zhen for future conversations.
+    
+    Use this when Zhen shares personal information that should be remembered.
+    Examples: favorite color, job, hobbies, preferences, family details, interests.
+    Only works when talking directly to Zhen (learning mode).
+    
+    Args:
+        key: Category of information (e.g., 'favorite_color', 'job', 'hobby')  
+        value: The actual information to store
+    
+    Returns:
+        Dict with status and confirmation message
+    """
     
     # Check if we're in learning mode
     is_zhen = tool_context.state.get("is_zhen", False)
@@ -54,7 +61,17 @@ def learn_about_zhen(key: str, value: str, tool_context: ToolContext) -> dict:
     }
 
 def get_zhen_info(key: str, tool_context: ToolContext) -> dict:
-    """Get information about Zhen from persistent session state."""
+    """Retrieve specific information about Zhen that was previously stored.
+    
+    Use this to look up facts about Zhen when answering questions or providing context.
+    Works for any stored information like preferences, background, interests, etc.
+    
+    Args:
+        key: The category of information to retrieve (e.g., 'favorite_color', 'job')
+    
+    Returns:
+        Dict with the requested information or 'not found' message
+    """
     
     # Access the session state to retrieve information
     value = tool_context.state.get(key)
@@ -74,7 +91,16 @@ def get_zhen_info(key: str, tool_context: ToolContext) -> dict:
         }
 
 def list_known_facts(tool_context: ToolContext) -> dict:
-    """List all known facts about Zhen from session state."""
+    """Display all stored information about Zhen in an organized summary.
+    
+    Use this to show everything the bot knows about Zhen, useful for:
+    - Providing a complete overview when asked "what do you know about me?"
+    - Checking what information is already stored before learning new facts
+    - Giving context in conversations about Zhen
+    
+    Returns:
+        Dict with all stored facts formatted as a readable list
+    """
     
     # Get all non-system keys from state
     facts = {}
@@ -167,7 +193,10 @@ async def main():
     try:
         session_service = DatabaseSessionService(db_url=DB_URL)
         print("✅ Database session service created - data will persist!")
-        print(f"📄 Database: {DB_URL}")
+        
+        # Hide password in database URL for security
+        db_display = DB_URL.split('@')[1] if '@' in DB_URL else DB_URL
+        print(f"📄 Database: postgresql://***:***@{db_display}")
     except Exception as e:
         print(f"❌ Error creating session service: {e}")
         return
