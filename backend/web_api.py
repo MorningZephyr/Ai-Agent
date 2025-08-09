@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(__file__))
 
 try:
     from src.core.bot import UserAuthenticatedBot
+    from src.core.config import config
 except ImportError as e:
     print(f"Import error: {e}")
     print("Make sure you're running from the backend directory")
@@ -41,43 +42,47 @@ active_sessions: Dict[str, Dict[str, Any]] = {}
 
 class ChatMessage(BaseModel):
     message: str
-    user_id: str = "user_001"  # Default user ID for testing
 
 class AuthRequest(BaseModel):
     user_id: str
-    bot_owner_id: str = "zhen"  # Default bot owner
 
 class ChatResponse(BaseModel):
     response: str
     session_id: str
-    is_owner: bool
+
+@app.on_event("startup")
+async def startup_event():
+    """Validate critical configuration at startup."""
+    try:
+        # Fail fast if required env vars are missing
+        config.validate()
+    except Exception as e:
+        # Raise to stop the app when misconfigured
+        raise RuntimeError(f"Configuration error: {e}")
+
 
 @app.post("/api/auth", response_model=dict)
 async def authenticate_user(auth: AuthRequest):
     """Create or get a bot session for a user."""
     try:
-        session_id = f"{auth.user_id}_{auth.bot_owner_id}_{uuid.uuid4().hex[:8]}"
-        
+        session_id = f"{auth.user_id}_{uuid.uuid4().hex[:8]}"
         print(f"Creating bot session: {session_id}")
-        print(f"Bot owner: {auth.bot_owner_id}, User: {auth.user_id}")
         
         # Create new bot instance
-        bot = UserAuthenticatedBot(bot_owner_id=auth.bot_owner_id)
+        bot = UserAuthenticatedBot()
+
+        # Initialize the bot and verify success
+        init_ok = await bot.initialize()
+        if not init_ok:
+            raise HTTPException(status_code=500, detail="Failed to initialize bot (DB/model configuration)")
         
-        # Initialize the bot
-        await bot.initialize()
-        
-        # Check if user is owner
-        is_owner = (auth.user_id == auth.bot_owner_id)
-        
-        print(f"Bot created successfully. Is owner: {is_owner}")
+        print("Bot created successfully.")
         
         # Store the session with user info
         active_sessions[session_id] = {
             "bot": bot,
             "user_id": auth.user_id,
-            "bot_owner_id": auth.bot_owner_id,
-            "is_owner": is_owner
+            "is_owner": True  # legacy field; no distinction now
         }
         
         print(f"✅ Session stored: {session_id}")
@@ -87,9 +92,8 @@ async def authenticate_user(auth: AuthRequest):
         return {
             "session_id": session_id,
             "user_id": auth.user_id,
-            "bot_owner_id": auth.bot_owner_id,
-            "is_owner": is_owner,
-            "message": f"Connected as {'owner' if is_owner else 'visitor'}"
+            "is_owner": True,
+            "message": "Connected"
         }
     
     except Exception as e:
@@ -118,11 +122,14 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         
         # Get response from bot using user_id parameter
         response = await bot.chat(user_id, chat_msg.message)
+        # Ensure response is a string to satisfy ChatResponse schema
+        if response is None or not isinstance(response, str) or response.strip() == "":
+            response = "I couldn't generate a reply this time. Try rephrasing."
         
-        print(f"Bot response: {response}")
+        print(f"Bot response (safe): {response!r}")
         
         return ChatResponse(
-            response=response,
+            response=str(response),
             session_id=session_id,
             is_owner=session["is_owner"]
         )
@@ -142,9 +149,8 @@ async def get_session_info(session_id: str):
     session = active_sessions[session_id]
     return {
         "session_id": session_id,
-        "bot_owner_id": session["bot_owner_id"],
-        "current_user_id": session["user_id"],
-        "is_owner": session["is_owner"]
+    "current_user_id": session["user_id"],
+    "is_owner": True
     }
 
 @app.delete("/api/session/{session_id}")

@@ -13,9 +13,15 @@ interface Message {
 interface SessionInfo {
   session_id: string;
   user_id: string;
-  bot_owner_id: string;
   is_owner: boolean;
   message: string;
+}
+
+interface ErrorInfo {
+  status?: number;
+  title?: string;
+  message: string;
+  detail?: any;
 }
 
 export default function ChatPage() {
@@ -24,7 +30,11 @@ export default function ChatPage() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState('user_001');
-  const [botOwner, setBotOwner] = useState('zhen');
+  // owner concept removed
+  const [error, setError] = useState<ErrorInfo | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [health, setHealth] = useState<any | null>(null);
+  const [sessionMeta, setSessionMeta] = useState<any | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -35,12 +45,40 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  function parseAxiosError(err: any): ErrorInfo {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const message = (err.response?.data?.detail) ?? err.message;
+      const detail = err.response?.data ?? (typeof err.toJSON === 'function' ? err.toJSON() : String(err));
+      return { status, title: 'Request failed', message: String(message), detail };
+    }
+    return { title: 'Error', message: err instanceof Error ? err.message : String(err) };
+  }
+
+  const refreshHealth = async () => {
+    try {
+      const res = await axios.get('http://localhost:8000/api/health');
+      setHealth(res.data);
+    } catch (e) {
+      setError(parseAxiosError(e));
+    }
+  };
+
+  const refreshSessionInfo = async () => {
+    if (!sessionInfo) return;
+    try {
+      const res = await axios.get(`http://localhost:8000/api/session/${sessionInfo.session_id}/info`);
+      setSessionMeta(res.data);
+    } catch (e) {
+      setError(parseAxiosError(e));
+    }
+  };
+
   const authenticateUser = async () => {
     try {
       setIsLoading(true);
       const response = await axios.post('http://localhost:8000/api/auth', {
-        user_id: userId,
-        bot_owner_id: botOwner
+        user_id: userId
       });
       
       setSessionInfo(response.data);
@@ -51,8 +89,8 @@ export default function ChatPage() {
         timestamp: new Date()
       }]);
     } catch (error) {
-      console.error('Authentication failed:', error);
-      alert('Failed to connect to bot. Make sure the backend is running.');
+  console.error('Authentication failed:', error);
+  setError(parseAxiosError(error));
     } finally {
       setIsLoading(false);
     }
@@ -74,8 +112,7 @@ export default function ChatPage() {
 
     try {
       const response = await axios.post(`http://localhost:8000/api/chat/${sessionInfo.session_id}`, {
-        message: inputText,
-        user_id: userId
+        message: inputText
       });
 
       const botMessage: Message = {
@@ -95,6 +132,7 @@ export default function ChatPage() {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+  setError(parseAxiosError(error));
     } finally {
       setIsLoading(false);
     }
@@ -106,26 +144,105 @@ export default function ChatPage() {
       sendMessage();
     }
   };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const quickSend = async (text: string) => {
+    setInputText(text);
+    // slight delay to ensure state update then send
+    setTimeout(sendMessage, 0);
+  };
+
+  const endSession = async () => {
+    if (!sessionInfo) return;
+    try {
+      await axios.delete(`http://localhost:8000/api/session/${sessionInfo.session_id}`);
+    } catch (err) {
+      console.warn('Failed to end session on server, clearing client state.');
+    }
+    setSessionInfo(null);
+    setMessages([]);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 p-4">
       <div className="max-w-4xl mx-auto bg-gray-800/90 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-700/50">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-500 text-white p-6 rounded-t-xl relative overflow-hidden">
+  <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-500 text-white p-6 rounded-t-xl relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-blue-600/20 to-cyan-500/20 backdrop-blur-sm"></div>
           <div className="relative z-10">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-cyan-100 bg-clip-text text-transparent">
               🤖 Zhen Bot - ADK Test Interface
             </h1>
             {sessionInfo && (
-              <p className="text-gray-100 mt-2">
-                Connected as: <span className="font-semibold text-cyan-200">{sessionInfo.user_id}</span>
-                <span className="mx-2">{sessionInfo.is_owner ? '👑 Owner' : '👤 Visitor'}</span> | 
-                Bot Owner: <span className="font-semibold text-purple-200">{sessionInfo.bot_owner_id}</span>
-              </p>
+                <div className="mt-3 flex items-center gap-3 flex-wrap">
+                  <span className="text-gray-100">Connected as</span>
+                  <span className="px-2 py-1 rounded-md bg-cyan-600/30 border border-cyan-300/30 text-cyan-100">
+                    {sessionInfo.user_id}
+                  </span>
+                  <span className={`px-2 py-1 rounded-md border bg-emerald-500/20 border-emerald-300/40 text-emerald-100`}>
+                    Connected
+                  </span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button onClick={() => setDebugOpen(v => !v)} className="bg-gray-900/30 hover:bg-gray-900/50 border border-gray-300/20 text-white text-sm px-3 py-1.5 rounded-md transition-colors">{debugOpen ? 'Hide' : 'Debug'}</button>
+                    <button onClick={endSession} className="bg-red-500/80 hover:bg-red-500 text-white text-sm px-3 py-1.5 rounded-md transition-colors border border-red-300/40">End Session</button>
+                  </div>
+                </div>
             )}
           </div>
         </div>
+
+          {/* Error Banner */}
+          {error && (
+            <div className="mx-6 mt-4 mb-2 rounded-lg border border-red-400/40 bg-red-900/30 text-red-100 p-4">
+              <div className="flex items-start gap-3">
+                <div className="font-semibold">{error.title || 'Error'}{typeof error.status === 'number' ? ` (${error.status})` : ''}</div>
+                <div className="flex-1">{error.message}</div>
+                <div className="flex items-center gap-2">
+                  {error.detail && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(JSON.stringify(error.detail, null, 2));
+                        } catch {}
+                      }}
+                      className="text-xs px-2 py-1 rounded border border-red-300/40 hover:bg-red-900/40"
+                    >Copy details</button>
+                  )}
+                  <button onClick={() => setError(null)} className="text-xs px-2 py-1 rounded border border-red-300/40 hover:bg-red-900/40">Dismiss</button>
+                </div>
+              </div>
+              {error.detail && (
+                <pre className="mt-2 max-h-48 overflow-auto text-xs whitespace-pre-wrap">{JSON.stringify(error.detail, null, 2)}</pre>
+              )}
+            </div>
+          )}
+
+          {/* Debug Panel */}
+          {debugOpen && (
+            <div className="mx-6 mb-4 rounded-lg border border-cyan-400/30 bg-cyan-900/10 text-cyan-100 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <button onClick={refreshHealth} className="text-xs px-2 py-1 rounded border border-cyan-300/40 hover:bg-cyan-900/20">Refresh Health</button>
+                {sessionInfo && (
+                  <button onClick={refreshSessionInfo} className="text-xs px-2 py-1 rounded border border-cyan-300/40 hover:bg-cyan-900/20">Refresh Session Info</button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-semibold mb-1">Health</div>
+                  <pre className="bg-black/30 rounded p-2 text-xs min-h-16">{health ? JSON.stringify(health, null, 2) : 'No data'}</pre>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold mb-1">Session Info</div>
+                  <pre className="bg-black/30 rounded p-2 text-xs min-h-16">{sessionMeta ? JSON.stringify(sessionMeta, null, 2) : 'No data'}</pre>
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* Authentication Section */}
         {!sessionInfo && (
@@ -147,16 +264,7 @@ export default function ChatPage() {
                     placeholder="user_001"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Bot Owner:</label>
-                  <input
-                    type="text"
-                    value={botOwner}
-                    onChange={(e) => setBotOwner(e.target.value)}
-                    className="w-full bg-gray-700/50 border border-gray-600/50 text-gray-100 rounded-lg px-4 py-3 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none transition-all duration-200 placeholder-gray-400"
-                    placeholder="zhen"
-                  />
-                </div>
+                {/* Owner field removed */}
               </div>
               
               <button
@@ -184,6 +292,13 @@ export default function ChatPage() {
         {sessionInfo && (
           <>
             <div className="h-96 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-800/30 to-gray-900/50 backdrop-blur-sm">
+            {/* Quick Actions */}
+            <div className="px-6 pt-6 bg-gradient-to-b from-gray-800/30 to-gray-900/50 border-b border-gray-700/40">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => quickSend('My favorite color is blue')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">Teach: favorite color = blue</button>
+                <button onClick={() => quickSend('I work at Google')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">Teach: employer</button>
+              </div>
+            </div>
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -226,7 +341,7 @@ export default function ChatPage() {
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyDown}
                   placeholder="Type your message... (Press Enter to send)"
                   className="flex-1 bg-gray-700/50 text-gray-100 border-2 border-gray-600/50 rounded-lg px-4 py-3 resize-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 focus:outline-none shadow-sm placeholder-gray-400 backdrop-blur-sm transition-all duration-200"
                   rows={2}

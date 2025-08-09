@@ -1,5 +1,5 @@
 """
-Core bot implementation with authentication-based learning control.
+Simple bot that learns anything the user tells it.
 """
 
 import asyncio
@@ -10,15 +10,15 @@ from google.adk.sessions import DatabaseSessionService
 from google.genai import types
 
 from .config import config
-from ..tools.learning_tools import learn_about_user_wrapper
-from ..tools.retrieval_tools import get_user_info_wrapper, list_known_facts_wrapper
+from ..tools.tool_manager import get_tools
 
 
 class UserAuthenticatedBot:
-    """Multi-user AI bot with authentication-based learning mode."""
-    
-    def __init__(self, bot_owner_id: str):
-        self.bot_owner_id = bot_owner_id
+    """Minimal bot: no owner/guest logic, just persistent memory."""
+
+    def __init__(self, bot_owner_id: str | None = None):
+        # owner id retained only for backward compatibility; unused in logic
+        self.bot_owner_id = bot_owner_id or "user"
         self.session_service: Optional[DatabaseSessionService] = None
         self.agent: Optional[Agent] = None
         self.runner: Optional[Runner] = None
@@ -30,28 +30,16 @@ class UserAuthenticatedBot:
             self.session_service = DatabaseSessionService(db_url=config.DB_URL)
             print("✅ Database session service created")
             
-            # Create agent with dynamic owner name
+            # Create agent with simple instruction
             self.agent = Agent(
-                name=f"{self.bot_owner_id}_bot",
+                name=f"memory_bot",
                 model=config.ADK_MODEL,
-                description=f"Digital representative of {self.bot_owner_id} with persistent memory.",
-                instruction=f"""
-                You are {self.bot_owner_id}-Bot, a digital representative of {self.bot_owner_id} with persistent memory.
-                
-                IMPORTANT: Only learn new facts when talking to {self.bot_owner_id} directly (is_owner=True).
-                When talking to others (is_owner=False), share what you know but don't learn new information.
-                
-                Available tools:
-                - learn_about_user(key, value): Store facts about {self.bot_owner_id} (only when is_owner=True)
-                - get_user_info(key): Retrieve specific facts about {self.bot_owner_id}
-                - list_known_facts(): Show all known facts about {self.bot_owner_id}
-                
-                When is_owner=True: You're talking to the real {self.bot_owner_id} - learn and store facts
-                When is_owner=False: You're {self.bot_owner_id}'s representative talking to others - share knowledge but don't learn
-                
-                Be natural, friendly, and conversational. Represent {self.bot_owner_id} well!
-                """,
-                tools=[]  # Tools will be set dynamically per conversation
+                description="A friendly assistant with persistent memory.",
+                instruction=(
+                    "You are a helpful assistant that remembers anything the user says. "
+                    "Use the learn_about_user(statement) tool to store facts, and feel free to recall them in future replies."
+                ),
+                tools=[],  # set per message
             )
             
             self.runner = Runner(
@@ -65,31 +53,17 @@ class UserAuthenticatedBot:
             print(f"❌ Error initializing bot: {e}")
             return False
     
-    def _get_tools_for_user(self, current_user_id: str):
-        """Get tools configured for the current user."""
-        return [
-            learn_about_user_wrapper(self.bot_owner_id, current_user_id),
-            get_user_info_wrapper(self.bot_owner_id, current_user_id),
-            list_known_facts_wrapper(self.bot_owner_id, current_user_id)
-        ]
+    def _get_tools(self):
+        return get_tools()
     
     def create_initial_state(self, current_user_id: str) -> dict:
-        """Create initial session state with user authentication info."""
-        is_owner = (current_user_id == self.bot_owner_id)
-        
-        return {
-            "is_owner": is_owner,
-            "current_user": current_user_id,
-            "bot_owner_id": self.bot_owner_id,
-            "session_created": True
-        }
+        return {"session_created": True}
     
     async def get_or_create_session(self, current_user_id: str) -> tuple[Optional[str], Optional[str]]:
-        """Get existing session or create new one for the current user."""
+        """Get or create a shared memory session."""
         try:
-            # All users share the same bot session for shared knowledge
-            # But we track who's currently talking
-            shared_session_key = f"{self.bot_owner_id}_bot_shared_knowledge"
+            # Single shared memory bucket
+            shared_session_key = "memory::shared"
             
             # Try to get existing shared session
             existing_sessions = self.session_service.list_sessions(
@@ -103,7 +77,7 @@ class UserAuthenticatedBot:
                 return shared_session_key, session_id
             else:
                 # Create new shared session
-                initial_state = self.create_initial_state(self.bot_owner_id)  # Initialize as owner
+                initial_state = self.create_initial_state(current_user_id)
                 new_session = self.session_service.create_session(
                     app_name=config.APP_NAME,
                     user_id=shared_session_key,
@@ -117,44 +91,45 @@ class UserAuthenticatedBot:
             return None, None
     
     async def chat(self, current_user_id: str, message: str) -> str:
-        """Handle a chat message from a user."""
-        # Set current user for this conversation
+        """Chat with the bot; it can learn anything you say."""
         self.current_user_id = current_user_id
-        
-        # Update agent tools for current user context
+
         if self.agent:
-            self.agent.tools = self._get_tools_for_user(current_user_id)
-        
+            self.agent.tools = self._get_tools()
+
+            self.runner = Runner(
+                agent=self.agent,
+                app_name=config.APP_NAME,
+                session_service=self.session_service,
+            )
+
         user_key, session_id = await self.get_or_create_session(current_user_id)
         if not user_key or not session_id:
             return "Error: Could not create or access session"
-        
-        # Determine if this is the owner or someone else
-        is_owner = (current_user_id == self.bot_owner_id)
-        mode = "Learning Mode" if is_owner else "Representative Mode"
-        
-        print(f"👤 User: {current_user_id} | 🤖 Bot: {self.bot_owner_id}-Bot | 🔄 {mode}")
-        
+
+        print(f"👤 User: {current_user_id} | 🤖 Bot: memory_bot | 🔄 Learning Mode")
+
         content = types.Content(role="user", parts=[types.Part(text=message)])
-        
+
         try:
             async for event in self.runner.run_async(
                 user_id=user_key,
                 session_id=session_id,
-                new_message=content
+                new_message=content,
             ):
                 if event.is_final_response():
                     if event.content and event.content.parts:
                         text_parts = []
                         for part in event.content.parts:
-                            if hasattr(part, 'text') and part.text:
+                            if hasattr(part, "text") and part.text:
                                 text_parts.append(part.text)
-                        
+
                         if text_parts:
-                            response_text = ' '.join(text_parts)
+                            response_text = " ".join(text_parts)
                             return response_text
                         else:
-                            return "[Processing...]"
-                            
+                            return "I couldn't generate a reply this time. Try rephrasing."
+            return "I couldn't generate a reply this time. Try rephrasing."
+
         except Exception as e:
             return f"Error: {e}"
