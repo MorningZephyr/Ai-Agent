@@ -1,26 +1,4 @@
-# Ai-Agent — Simple## Current Be## Recent Changes
-
-- **Simplified Architecture**: Remo## Testing Notes
-
-- Quick Demo: 
-  - Say: "My favorite color is blue" → bot learns it
-  - Ask: "What's my favorite color?" → bot answers "blue"
-  - Say: "I work at Google" → bot learns job info
-  - Ask: "Where do I work?" → bot recalls Google
-
-- Unit tests available in `backend/tests/`:
-  - `test_user_info_tool.py`: Tests the learn tool's heuristic extraction
-  - `test_bot.py`: Tests bot initialization and simplified behaviorguest complexity - now anyone can teach the bot.
-- **Single Tool**: Replaced 6 complex tools with 1 simple `learn_about_user(statement)` tool.
-- **Heuristic Extraction**: Automatically extracts facts from natural language ("My X is Y" patterns).
-- **Shared Memory**: All users contribute to the same knowledge base stored in `memory::shared`.
-- **Robust Responses**: Added fallbacks to ensure the API always returns meaningful strings.
-
-- The bot has 1 tool: `learn_about_user(statement)` that stores any statement and extracts key/value facts.
-- Teaching examples: "My favorite color is blue", "I work at Google", "I love hiking"
-- The tool automatically extracts structured facts when possible (e.g., "My X is Y" becomes key=X, value=Y).
-- All statements are stored in `facts._raw` and extracted facts in `facts.{key}`.
-- The bot's instructions encourage natural conversation while using the learn tool for new information.y Bot (Aug 2025)
+# Ai-Agent — Simple Memory Bot (Aug 2025)
 
 ## Overview
 
@@ -41,22 +19,23 @@ This repo hosts a simple AI assistant built with FastAPI + Google ADK (Gemini 2.
 
 ## Current Behavior
 
-- Owner gets 6 tools: `set_info`, `update_info`, `delete_info`, `get_info`, `list_all_info`, `search_info`.
-- Guests get 3 tools: `get_info`, `list_all_info`, `search_info`.
-- The agent dynamically refreshes its tools per message using the current speaker.
-- Tool usage is encouraged by the bot’s instructions (e.g., use `get_info('favorite_color')` when asked about favorite color).
+- The bot has 1 tool: `learn_about_user(statement)` that stores any statement and extracts key/value facts.
+- Teaching examples: "My favorite color is blue", "I work at Google", "I love hiking"
+- The tool automatically extracts structured facts when possible (e.g., "My X is Y" becomes key=X, value=Y).
+- All statements are stored in `facts._raw` and extracted facts in `facts.{key}`.
+- The bot's instructions encourage natural conversation while using the learn tool for new information.
 
-## Recent Fixes
+## Recent Changes
 
-- Hardened responses to ensure the API always returns a string (prevents `None` from causing 500s)
-  - `bot.chat()` now returns a friendly fallback when no text parts are produced.
-  - `web_api.py` coerces non-string/empty bot responses to role-aware messages.
-- Added a guard for guest setter-like messages (e.g., “it’s red”, “set …”):
-  - Guests will receive a polite refusal: "I can't change Zhen's info for visitors. Please ask the owner to update it."
+- **Simplified Architecture**: Removed owner/guest complexity - now anyone can teach the bot.
+- **Single Tool**: Replaced 6 complex tools with 1 simple `learn_about_user(statement)` tool.
+- **Heuristic Extraction**: Automatically extracts facts from natural language ("My X is Y" patterns).
+- **Shared Memory**: All users contribute to the same knowledge base stored in `memory::shared`.
+- **Robust Responses**: Added fallbacks to ensure the API always returns meaningful strings.
 
 ## How to Run (Windows PowerShell)
 
-Prereqs: Python 3.10+, Node 18+, PostgreSQL running and accessible.
+Prerequisites: Python 3.10+, Node 18+, PostgreSQL running and accessible.
 
 - Backend (from `backend/`):
 ```powershell
@@ -98,14 +77,15 @@ DB_URL=postgresql://user:password@localhost:5432/your_db
 
 ## Testing Notes
 
-- Quick E2E: 
-  - Owner: "My favorite color is blue" → bot should learn it.
-  - Guest: "What is Zhen's favorite color?" → bot answers "blue".
-  - Guest: "it's red" → bot refuses and does not update.
+- Quick Demo: 
+  - Say: "My favorite color is blue" → bot learns it
+  - Ask: "What's my favorite color?" → bot answers "blue"
+  - Say: "I work at Google" → bot learns job info
+  - Ask: "Where do I work?" → bot recalls Google
 
-- Python test scripts are available in `backend/`:
-  - `test_unified_tools.py`: Owner vs Guest tool counts and flows.
-  - `test_guest_access.py`: Guest can see owner’s stored info.
+- Unit tests available in `backend/tests/`:
+  - `test_user_info_tool.py`: Tests the learn tool's heuristic extraction
+  - `test_bot.py`: Tests bot initialization and simplified behavior
 
 ## Known Limitations / Next Steps
 
