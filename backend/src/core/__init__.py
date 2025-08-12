@@ -1,5 +1,5 @@
 # Core package initialization
-from .bot import UserAuthenticatedBot
+from .bot import MemoryBot
 from .config import config
 
-__all__ = ["UserAuthenticatedBot", "config"]
+__all__ = ["MemoryBot", "config"]

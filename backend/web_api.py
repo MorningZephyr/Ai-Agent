@@ -16,7 +16,7 @@ import warnings
 sys.path.append(os.path.dirname(__file__))
 
 try:
-    from src.core.bot import UserAuthenticatedBot
+    from src.core.bot import MemoryBot
     from src.core.config import config
 except ImportError as e:
     print(f"Import error: {e}")
@@ -69,7 +69,7 @@ async def authenticate_user(auth: AuthRequest):
         print(f"Creating bot session: {session_id}")
         
         # Create new bot instance
-        bot = UserAuthenticatedBot()
+    bot = MemoryBot()
 
         # Initialize the bot and verify success
         init_ok = await bot.initialize()

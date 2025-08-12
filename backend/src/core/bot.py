@@ -13,16 +13,13 @@ from .config import config
 from ..tools.tool_manager import get_tools
 
 
-class UserAuthenticatedBot:
+class MemoryBot:
     """Minimal bot: no owner/guest logic, just persistent memory."""
 
-    def __init__(self, bot_owner_id: str | None = None):
-        # owner id retained only for backward compatibility; unused in logic
-        self.bot_owner_id = bot_owner_id or "user"
+    def __init__(self):
         self.session_service: Optional[DatabaseSessionService] = None
         self.agent: Optional[Agent] = None
         self.runner: Optional[Runner] = None
-        self.current_user_id: Optional[str] = None
         
     async def initialize(self) -> bool:
         """Initialize the bot with database connection."""
@@ -37,7 +34,11 @@ class UserAuthenticatedBot:
                 description="A friendly assistant with persistent memory.",
                 instruction=(
                     "You are a helpful assistant that remembers anything the user says. "
-                    "Use the learn_about_user(statement) tool to store facts, and feel free to recall them in future replies."
+                    "When a user makes a statement, decide if it expresses a fact, preference, or hobby. "
+                    "If so, use the learn_about_user(statement) tool to store it as a key-value pair. "
+                    "If the statement is ambiguous, suggest a key name and ask for user approval. "
+                    "Do not store questions or non-factual statements. "
+                    "Feel free to recall facts in future replies."
                 ),
                 tools=[],  # set per message
             )

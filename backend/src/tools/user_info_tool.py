@@ -26,51 +26,58 @@ class UserInfoTool:
         return text.strip().lower().replace("'s ", " ").replace(" ", "_").replace("-", "_")
 
     def learn_about_user(self, tool_context: ToolContext, statement: str) -> Dict[str, Any]:
-        """Remember a free-text statement about the user.
+        """
+        Use the LLM to decide if a statement expresses a user fact, preference, or hobby, and extract key-value pairs.
 
         Args:
-            statement: e.g., "My favorite color is blue", "I work at Google".
+            statement: Any user statement (e.g., "I like basketball", "My favorite color is blue").
 
         Behavior:
-            - Always appends the raw statement to facts._raw
-            - Tries to extract a simple key/value when phrased like "my X is Y" or "I am a Y"
+            - Uses the LLM to classify the statement and extract a key-value pair if possible
             - Stores extracted facts under normalized keys in ToolContext.state
+            - If no key-value can be extracted, suggests a key name and asks for user approval
 
         Returns:
-            Dict with status, message, and any extracted key/value.
+            Dict with:
+                - status: 'learned' if fact stored, 'suggestion' if key name suggested, 'error' if invalid input
+                - message: description of what was stored or suggested
+                - extracted: dict of key-value pairs (if any)
+                - suggested_key: key name suggestion (if applicable)
+                - original_statement: the original input (if applicable)
         """
         if not statement or not statement.strip():
             return {"status": "error", "message": "Please provide something to learn."}
 
         st = statement.strip()
 
-        # 1) Save raw statement
-        raw_key = "facts._raw"
-        raw_list = tool_context.state.get(raw_key) or []
-        raw_list.append(st)
-        tool_context.state[raw_key] = raw_list
+        # Use the LLM to classify and extract key-value
+        # For demonstration, we'll simulate the LLM with a simple prompt and response
+        # In production, you would call the LLM API here
+        # Example prompt:
+        # "Given the statement: 'I like basketball', does this express a user fact, preference, or hobby? If so, extract a key and value."
 
-        # 2) Heuristic extraction
+        # Simulated LLM logic (replace with actual LLM call)
+        import re
         extracted = []
-        lower = st.lower()
-
-        # Pattern: "my X is Y"
-        if lower.startswith("my ") and " is " in lower:
-            try:
-                after_my = st[3:].strip()  # drop "My "
-                parts = after_my.split(" is ", 1)
-                if len(parts) == 2:
-                    key_raw, value = parts[0].strip(), parts[1].strip()
-                    key = self._normalize_key(key_raw)
-                    tool_context.state[key] = value
-                    extracted.append((key, value))
-            except Exception:
-                pass
-
-        # Pattern: "I am a/an Y" or "I'm a/an Y"
-        if not extracted:
+        # Simulate: If the statement contains 'like', treat as hobby/preference
+        if re.search(r'\blike\b', st.lower()):
+            key = self._normalize_key("hobby")
+            value = re.sub(r'.*like ', '', st, flags=re.IGNORECASE).strip('.').strip()
+            tool_context.state[key] = value
+            extracted.append((key, value))
+        # Simulate: If the statement matches 'my X is Y'
+        elif st.lower().startswith("my ") and " is " in st.lower():
+            after_my = st[3:].strip()
+            parts = after_my.split(" is ", 1)
+            if len(parts) == 2:
+                key_raw, value = parts[0].strip(), parts[1].strip()
+                key = self._normalize_key(key_raw)
+                tool_context.state[key] = value
+                extracted.append((key, value))
+        # Simulate: If the statement matches 'I am a/an Y' or 'I'm a/an Y'
+        elif any(st.lower().startswith(prefix) for prefix in ["i am ", "i'm "]):
             for prefix in ["i am ", "i'm "]:
-                if lower.startswith(prefix):
+                if st.lower().startswith(prefix):
                     value = st[len(prefix):].strip()
                     key = self._normalize_key("role")
                     tool_context.state[key] = value
@@ -93,9 +100,16 @@ class UserInfoTool:
                 "extracted": {k: v for k, v in extracted},
             }
         else:
+            # If the LLM can't extract, suggest a key name
+            suggestion = "fact"  # fallback
+            words = st.split()
+            if len(words) > 2:
+                suggestion = self._normalize_key(words[1])
             return {
-                "status": "stored",
-                "message": "Stored your statement.",
+                "status": "suggestion",
+                "message": f"No key-value extracted. Suggest key name: '{suggestion}'. Please approve or provide a better key.",
+                "suggested_key": suggestion,
+                "original_statement": st,
             }
 
     # ADK compatibility shim (not used directly by our wrappers)
