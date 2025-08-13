@@ -1,35 +1,40 @@
+
 # Ai-Agent — Simple Memory Bot (Aug 2025)
 
 ## Overview
 
-This repo hosts a simple AI assistant built with FastAPI + Google ADK (Gemini 2.0 Flash) and a Next.js UI. The bot learns anything you tell it and stores facts in persistent memory. No authentication barriers - anyone can teach the bot new information.
+This repo hosts a simple AI assistant built with FastAPI + Google ADK (Gemini 2.0 Flash) and a Next.js UI. The bot uses the LLM to decide if a statement expresses a user fact, preference, or hobby, and stores facts in persistent memory. No authentication barriers—anyone can teach the bot new information.
 
 ## Architecture
 
-- Backend: `backend/`
+- **Backend**: `backend/`
   - FastAPI app (`web_api.py`) exposes `/api/auth`, `/api/chat/{session_id}`, `/api/session/*`, `/api/health`.
   - Bot (`src/core/bot.py`) uses Google ADK Agent + Runner and a `DatabaseSessionService` for persistence.
-  - Single tool (`src/tools/user_info_tool.py`) implements `learn_about_user(statement)` to store any facts.
+  - Single tool (`src/tools/user_info_tool.py`) implements `learn_about_user(statement)` to store facts as key-value pairs, using model-driven extraction.
   - Tool manager (`src/tools/tool_manager.py`) exposes the learn tool to the bot.
   - Config (`src/core/config.py`) reads `GOOGLE_API_KEY` and `DB_URL`; model is `gemini-2.0-flash`.
   - Sessions: all users share a single memory session `memory::shared`.
 
-- Frontend: `frontend/`
+- **Frontend**: `frontend/`
   - Next.js 15 app providing a chat UI where you enter a `user_id` and chat with the bot.
+
+- **ADK Reference**: `adk-python/` — Google ADK documentation and samples.
 
 ## Current Behavior
 
-- The bot has 1 tool: `learn_about_user(statement)` that stores any statement and extracts key/value facts.
+- The bot has 1 tool: `learn_about_user(statement)` that stores any statement as a key-value fact if possible.
 - Teaching examples: "My favorite color is blue", "I work at Google", "I love hiking"
-- The tool automatically extracts structured facts when possible (e.g., "My X is Y" becomes key=X, value=Y).
-- All statements are stored in `facts._raw` and extracted facts in `facts.{key}`.
-- The bot's instructions encourage natural conversation while using the learn tool for new information.
+- The tool uses the LLM to extract structured facts (e.g., "I like basketball" → key: "hobby", value: "basketball").
+- If the statement is ambiguous, the bot suggests a key name and asks for user approval.
+- Questions and non-factual statements are ignored and not stored.
+- All users contribute to the same knowledge base stored in `memory::shared`.
 
 ## Recent Changes
 
-- **Simplified Architecture**: Removed owner/guest complexity - now anyone can teach the bot.
+- **Model-Driven Extraction**: Fact extraction is now guided by the LLM, not hardcoded patterns.
+- **No Raw Statement Storage**: Only key-value facts are stored; ambiguous statements prompt for key approval.
+- **Simplified Architecture**: Removed owner/guest complexity—anyone can teach the bot.
 - **Single Tool**: Replaced 6 complex tools with 1 simple `learn_about_user(statement)` tool.
-- **Heuristic Extraction**: Automatically extracts facts from natural language ("My X is Y" patterns).
 - **Shared Memory**: All users contribute to the same knowledge base stored in `memory::shared`.
 - **Robust Responses**: Added fallbacks to ensure the API always returns meaningful strings.
 
@@ -37,12 +42,12 @@ This repo hosts a simple AI assistant built with FastAPI + Google ADK (Gemini 2.
 
 Prerequisites: Python 3.10+, Node 18+, PostgreSQL running and accessible.
 
-- Backend (from `backend/`):
+- **Backend** (from `backend/`):
 ```powershell
 python -m uvicorn web_api:app --reload --port 8000
 ```
 
-- Frontend (from `frontend/`):
+- **Frontend** (from `frontend/`):
 ```powershell
 npm install
 npm run dev
@@ -52,7 +57,7 @@ Open http://localhost:3000 and connect with any `user_id` (e.g., "user_001", "al
 
 Try teaching the bot:
 - "My favorite color is blue"
-- "I work at Google" 
+- "I work at Google"
 - "I love hiking on weekends"
 
 Then ask questions like "What's my favorite color?" or just chat naturally.
