@@ -30,7 +30,7 @@ export default function ChatPage() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState('user_001');
-  // owner concept removed
+  const [isOwner, setIsOwner] = useState(false);
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [health, setHealth] = useState<any | null>(null);
@@ -78,7 +78,8 @@ export default function ChatPage() {
     try {
       setIsLoading(true);
       const response = await axios.post('http://localhost:8000/api/auth', {
-        user_id: userId
+        user_id: userId,
+        is_owner: isOwner
       });
       
       setSessionInfo(response.data);
@@ -176,7 +177,7 @@ export default function ChatPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 via-blue-600/20 to-cyan-500/20 backdrop-blur-sm"></div>
           <div className="relative z-10">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-cyan-100 bg-clip-text text-transparent">
-              🤖 Zhen Bot - ADK Test Interface
+              🧭 AI Representative — Profile Bot
             </h1>
             {sessionInfo && (
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -264,7 +265,20 @@ export default function ChatPage() {
                     placeholder="user_001"
                   />
                 </div>
-                {/* Owner field removed */}
+                <div>
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isOwner}
+                      onChange={(e) => setIsOwner(e.target.checked)}
+                      className="w-4 h-4 text-cyan-500 bg-gray-700 border-gray-600 rounded focus:ring-cyan-400 focus:ring-2"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-300">I am the person being represented</span>
+                      <p className="text-xs text-gray-500">Only the represented person can teach new facts. Others can ask questions.</p>
+                    </div>
+                  </label>
+                </div>
               </div>
               
               <button
@@ -294,9 +308,16 @@ export default function ChatPage() {
             <div className="h-96 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-800/30 to-gray-900/50 backdrop-blur-sm">
             {/* Quick Actions */}
             <div className="px-6 pt-6 bg-gradient-to-b from-gray-800/30 to-gray-900/50 border-b border-gray-700/40">
+              {sessionInfo.is_owner && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <button onClick={() => quickSend('I work at Google as a software engineer and love hiking')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">📚 Teach: work & hobbies</button>
+                  <button onClick={() => quickSend('My favorite color is blue and I studied computer science at Stanford')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">📚 Teach: preferences & education</button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => quickSend('My favorite color is blue')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">Teach: favorite color = blue</button>
-                <button onClick={() => quickSend('I work at Google')} className="text-sm px-3 py-1.5 rounded-md border border-emerald-600/50 bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-100">Teach: employer</button>
+                <button onClick={() => quickSend('List everything you know about this person')} className="text-sm px-3 py-1.5 rounded-md border border-cyan-600/50 bg-cyan-700/30 hover:bg-cyan-700/50 text-cyan-100">📋 List all facts</button>
+                <button onClick={() => quickSend('What do you know about their work?')} className="text-sm px-3 py-1.5 rounded-md border border-purple-600/50 bg-purple-700/30 hover:bg-purple-700/50 text-purple-100">🔍 Search: work</button>
+                <button onClick={() => quickSend('Tell me about their hobbies')} className="text-sm px-3 py-1.5 rounded-md border border-purple-600/50 bg-purple-700/30 hover:bg-purple-700/50 text-purple-100">🔍 Search: hobbies</button>
               </div>
             </div>
               {messages.map((message) => (

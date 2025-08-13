@@ -22,6 +22,10 @@ class Config:
     ADK_MODEL: str = "gemini-2.0-flash"
     APP_NAME: str = "Multi-User AI Agents"
     
+    # Representative Profile Configuration
+    REPRESENTED_USER_ID: str = os.getenv("REPRESENTED_USER_ID", "me")
+    REPRESENTED_NAME: str = os.getenv("REPRESENTED_NAME", "Me")
+    
     # Security Configuration
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
     

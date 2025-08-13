@@ -45,6 +45,7 @@ class ChatMessage(BaseModel):
 
 class AuthRequest(BaseModel):
     user_id: str
+    is_owner: bool = False
 
 class ChatResponse(BaseModel):
     response: str
@@ -82,18 +83,19 @@ async def authenticate_user(auth: AuthRequest):
         active_sessions[session_id] = {
             "bot": bot,
             "user_id": auth.user_id,
-            "is_owner": True  # legacy field; no distinction now
+            "is_owner": auth.is_owner
         }
         
         print(f"✅ Session stored: {session_id}")
         print(f"✅ Active sessions count: {len(active_sessions)}")
         print(f"✅ Session keys: {list(active_sessions.keys())}")
         
+        owner_message = "Connected as owner (can teach facts)" if auth.is_owner else "Connected as visitor (can ask questions)"
         return {
             "session_id": session_id,
             "user_id": auth.user_id,
-            "is_owner": True,
-            "message": "Connected"
+            "is_owner": auth.is_owner,
+            "message": owner_message
         }
     
     except Exception as e:
@@ -120,8 +122,8 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         print(f"Processing message: {chat_msg.message}")
         print(f"User: {user_id}, Is owner: {session['is_owner']}")
         
-        # Get response from bot using user_id parameter
-        response = await bot.chat(user_id, chat_msg.message)
+        # Get response from bot using user_id parameter and owner status
+        response = await bot.chat(user_id, chat_msg.message, is_owner=session["is_owner"])
         # Ensure response is a string to satisfy ChatResponse schema
         if response is None or not isinstance(response, str) or response.strip() == "":
             response = "I couldn't generate a reply this time. Try rephrasing."
@@ -130,8 +132,7 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         
         return ChatResponse(
             response=str(response),
-            session_id=session_id,
-            is_owner=session["is_owner"]
+            session_id=session_id
         )
     
     except Exception as e:
@@ -149,8 +150,8 @@ async def get_session_info(session_id: str):
     session = active_sessions[session_id]
     return {
         "session_id": session_id,
-    "current_user_id": session["user_id"],
-    "is_owner": True
+        "current_user_id": session["user_id"],
+        "is_owner": session["is_owner"]
     }
 
 @app.delete("/api/session/{session_id}")
