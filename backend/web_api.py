@@ -6,6 +6,7 @@ import asyncio
 import uuid
 import sys
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,7 +27,21 @@ except ImportError as e:
 # Suppress ADK framework warnings
 warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
 
-app = FastAPI(title="Zhen Bot API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        config.validate()
+        print("✅ Configuration validated successfully")
+    except Exception as e:
+        raise RuntimeError(f"Configuration error: {e}")
+    
+    yield
+    
+    # Shutdown (cleanup if needed)
+    print("🔄 Server shutting down...")
+
+app = FastAPI(title="AI Representative API", version="1.0.0", lifespan=lifespan)
 
 # Add CORS middleware for frontend
 app.add_middleware(
@@ -50,16 +65,8 @@ class AuthRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     session_id: str
+    is_owner: bool
 
-@app.on_event("startup")
-async def startup_event():
-    """Validate critical configuration at startup."""
-    try:
-        # Fail fast if required env vars are missing
-        config.validate()
-    except Exception as e:
-        # Raise to stop the app when misconfigured
-        raise RuntimeError(f"Configuration error: {e}")
 
 
 @app.post("/api/auth", response_model=dict)
@@ -70,7 +77,7 @@ async def authenticate_user(auth: AuthRequest):
         print(f"Creating bot session: {session_id}")
         
         # Create new bot instance
-    bot = MemoryBot()
+        bot = MemoryBot()
 
         # Initialize the bot and verify success
         init_ok = await bot.initialize()
@@ -90,12 +97,13 @@ async def authenticate_user(auth: AuthRequest):
         print(f"✅ Active sessions count: {len(active_sessions)}")
         print(f"✅ Session keys: {list(active_sessions.keys())}")
         
-        owner_message = "Connected as owner (can teach facts)" if auth.is_owner else "Connected as visitor (can ask questions)"
+        owner_message = "as owner (can teach facts)" if auth.is_owner else "as visitor (can ask questions)"
+        
         return {
             "session_id": session_id,
             "user_id": auth.user_id,
             "is_owner": auth.is_owner,
-            "message": owner_message
+            "message": f"Connected {owner_message}"
         }
     
     except Exception as e:
@@ -118,12 +126,13 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         session = active_sessions[session_id]
         bot = session["bot"]
         user_id = session["user_id"]
+        is_owner = session["is_owner"]
         
         print(f"Processing message: {chat_msg.message}")
-        print(f"User: {user_id}, Is owner: {session['is_owner']}")
+        print(f"User: {user_id}, Is owner: {is_owner}")
         
-        # Get response from bot using user_id parameter and owner status
-        response = await bot.chat(user_id, chat_msg.message, is_owner=session["is_owner"])
+        # Get response from bot using user_id and owner status
+        response = await bot.chat(user_id, chat_msg.message, is_owner)
         # Ensure response is a string to satisfy ChatResponse schema
         if response is None or not isinstance(response, str) or response.strip() == "":
             response = "I couldn't generate a reply this time. Try rephrasing."
@@ -132,7 +141,8 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         
         return ChatResponse(
             response=str(response),
-            session_id=session_id
+            session_id=session_id,
+            is_owner=is_owner
         )
     
     except Exception as e:
@@ -169,9 +179,9 @@ async def health_check():
     return {
         "status": "healthy", 
         "active_sessions": len(active_sessions),
-        "message": "Zhen Bot API is running"
+        "message": "AI Representative API is running"
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True) 
