@@ -1,5 +1,5 @@
 # Core package initialization
-from .bot import MemoryBot
+from .bot import ZhenBot
 from .config import config
 
-__all__ = ["MemoryBot", "config"]
+__all__ = ["ZhenBot", "config"]

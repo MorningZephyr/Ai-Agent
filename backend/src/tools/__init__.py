@@ -1,8 +1,6 @@
 # Tools package initialization
-from .user_info_tool import UserInfoTool
-from .tool_manager import get_tools
+from .learn_about_zhen import learn_about_zhen
 
 __all__ = [
-    "UserInfoTool",
-    "get_tools",
+    "learn_about_zhen",
 ]

@@ -1,5 +1,5 @@
 """
-Configuration management for the AI Representative Bot.
+Simple configuration for Zhen's AI representative.
 """
 
 import os
@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    """Application configuration."""
+    """Simple application configuration."""
     
     # Database Configuration
     DB_URL: str = os.getenv("DB_URL", "postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot_production")
@@ -20,11 +20,7 @@ class Config:
     
     # ADK Configuration
     ADK_MODEL: str = "gemini-2.0-flash"
-    APP_NAME: str = "AI Representative"
-    
-    # Representative Profile Configuration
-    REPRESENTED_USER_ID: str = os.getenv("REPRESENTED_USER_ID", "me")
-    REPRESENTED_NAME: str = os.getenv("REPRESENTED_NAME", "Me")
+    APP_NAME: str = "Zhen's AI Representative"
     
     @classmethod
     def validate(cls) -> None:

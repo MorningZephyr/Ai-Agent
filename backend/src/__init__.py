@@ -1,9 +1,8 @@
 # src/__init__.py - Package initialization
 """
-Multi-User AI Agent System
+Zhen's AI Representative
 
-A secure, scalable platform for creating personalized AI representatives
-with authentication-based learning control and persistent knowledge storage.
+A simple AI agent that learns facts about Zhen.
 """
 
 __version__ = "1.0.0"
