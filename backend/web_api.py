@@ -17,7 +17,7 @@ import warnings
 sys.path.append(os.path.dirname(__file__))
 
 try:
-    from src.core.bot import MemoryBot
+    from src.core.bot import ZhenBot
     from src.core.config import config
 except ImportError as e:
     print(f"Import error: {e}")
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     # Shutdown (cleanup if needed)
     print("🔄 Server shutting down...")
 
-app = FastAPI(title="AI Representative API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Zhen's AI Representative API", version="1.0.0", lifespan=lifespan)
 
 # Add CORS middleware for frontend
 app.add_middleware(
@@ -77,7 +77,7 @@ async def authenticate_user(auth: AuthRequest):
         print(f"Creating bot session: {session_id}")
         
         # Create new bot instance
-        bot = MemoryBot()
+        bot = ZhenBot()
 
         # Initialize the bot and verify success
         init_ok = await bot.initialize()
@@ -131,8 +131,8 @@ async def chat(session_id: str, chat_msg: ChatMessage):
         print(f"Processing message: {chat_msg.message}")
         print(f"User: {user_id}, Is owner: {is_owner}")
         
-        # Get response from bot using user_id and owner status
-        response = await bot.chat(user_id, chat_msg.message, is_owner)
+        # Get response from bot (simplified - no user_id or owner status needed)
+        response = await bot.chat(chat_msg.message)
         # Ensure response is a string to satisfy ChatResponse schema
         if response is None or not isinstance(response, str) or response.strip() == "":
             response = "I couldn't generate a reply this time. Try rephrasing."
