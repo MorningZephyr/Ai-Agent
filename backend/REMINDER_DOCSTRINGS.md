@@ -55,6 +55,41 @@ This improves agent performance, developer experience, and project maintainabili
   - Namespace and normalize keys written to `ToolContext.state`. Prefer lowercase snake_case and avoid collisions; document the schema in tool docs.
   - Track discovered keys in a dedicated index (e.g., `facts._keys`) and avoid storing PII unless necessary and documented.
   - Validate inputs early and return actionable messages on invalid input.
+  - **Critical - ADK State Change Tracking**: ADK only detects state changes through direct assignment to `ToolContext.state` keys. Nested object modifications are not automatically tracked or persisted to the database.
+
+    **Problem Pattern (Won't Persist):**
+    ```python
+    # Get reference to nested object
+    profile = tool_context.state["user_profile"]
+    
+    # Modify nested properties - ADK doesn't detect these changes
+    profile["interests"]["music"] = "hobby"
+    profile["personality_traits"].append("creative")
+    profile["learned_facts"]["job"] = {"value": "engineer", "source": "conversation"}
+    
+    # ❌ Changes are lost - ADK didn't detect the modifications
+    ```
+
+    **Correct Pattern (Will Persist):**
+    ```python
+    # Get reference to nested object
+    profile = tool_context.state["user_profile"]
+    
+    # Modify nested properties
+    profile["interests"]["music"] = "hobby"
+    profile["personality_traits"].append("creative")
+    profile["learned_facts"]["job"] = {"value": "engineer", "source": "conversation"}
+    
+    # ✅ Trigger ADK's change detection by reassigning the modified object
+    tool_context.state["user_profile"] = profile
+    print("Profile updated in session state - will be persisted automatically")
+    ```
+
+    **Why This Happens:**
+    - ADK watches for assignments to `tool_context.state` keys to detect changes
+    - Nested modifications (like `obj["key"]["subkey"] = value`) don't trigger the watcher
+    - Reassignment (`tool_context.state["key"] = obj`) signals ADK that the state changed
+    - Without reassignment, changes remain in memory only and are lost when the session ends
 
 - Prompting and instruction hygiene
   - Keep the agent instruction concise and explicit about when to call tools and when not to.

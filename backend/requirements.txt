@@ -1,18 +1,17 @@
-# FastAPI web framework for modern async API
-fastapi==0.111.0
-uvicorn==0.30.0
+# Core dependencies for AI Representative System
 
 # Environment variables
 python-dotenv==1.1.0
 
-# Google ADK for AI agent functionality
+# Google ADK for AI agent functionality and conversation memory
 google-adk==0.3.0
+
+# PostgreSQL database adapter for persistent memory
+psycopg2-binary==2.9.10
 
 # Supporting packages for ADK
 deprecated==1.2.15
 
-# PostgreSQL database adapter
-psycopg2-binary==2.9.10
-
-# PDF processing (if needed)
-PyMuPDF==1.23.8
+# Web API (optional)
+fastapi==0.111.0
+uvicorn==0.30.0

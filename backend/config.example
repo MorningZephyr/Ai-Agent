@@ -1,0 +1,8 @@
+# AI Representative System Configuration
+
+# Google API Key for Gemini AI model
+GOOGLE_API_KEY=your_google_api_key_here
+
+# PostgreSQL database URL for persistent conversation memory
+# Format: postgresql://username:password@host:port/database
+DB_URL=postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot
