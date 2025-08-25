@@ -45,8 +45,10 @@ class AIRepresentativeSystem:
         self.db_url = os.getenv("DB_URL", "postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot")
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.session_service: Optional[DatabaseSessionService] = None
-        self.agent: Optional[Agent] = None
-        self.runner: Optional[Runner] = None
+        self.read_write_agent: Optional[Agent] = None
+        self.read_only_agent: Optional[Agent] = None
+        self.read_write_runner: Optional[Runner] = None
+        self.read_only_runner: Optional[Runner] = None
         self.client: Optional[Client] = None
         
         if not self.google_api_key:
@@ -65,39 +67,41 @@ class AIRepresentativeSystem:
             self.client = Client()
             
             # Create the AI agent with learning capabilities
-            learning_tool = self._create_learning_tool()
             smart_retrieval_tool = self._create_smart_retrieval_tool()
             representation_tool = self._create_representation_tool()
+            learning_tool = self._create_learning_tool()
             
             print(f"🔧 Created tools:")
-            print(f"   - Learning tool: {learning_tool.__name__ if hasattr(learning_tool, '__name__') else type(learning_tool)}")
-            print(f"   - Smart retrieval tool: {smart_retrieval_tool.__name__ if hasattr(smart_retrieval_tool, '__name__') else type(smart_retrieval_tool)}")
-            print(f"   - Representation tool: {representation_tool.__name__ if hasattr(representation_tool, '__name__') else type(representation_tool)}")
+            print(f"   - Learning Tool (for owners)")
+            print(f"   - Smart Retrieval Tool (for everyone)")
+            print(f"   - Representation Tool (for everyone)")
             
-            # Try to register tools with ADK - let's see what happens
-            try:
-                self.agent = Agent(
-                    name="ai_representative",
-                    model="gemini-2.0-flash",
-                    description="An intelligent AI that learns about users and can represent them.",
-                    instruction=self._get_system_instruction(),
-                    tools=[learning_tool, smart_retrieval_tool, representation_tool],
-                )
-                print(f"✅ Agent created with {len([learning_tool, smart_retrieval_tool, representation_tool])} tools")
-            except Exception as e:
-                print(f"⚠️ Warning creating agent with tools: {e}")
-                # Try without tools first to see if that works
-                self.agent = Agent(
-                    name="ai_representative",
-                    model="gemini-2.0-flash",
-                    description="An intelligent AI that learns about users and can represent them.",
-                    instruction=self._get_system_instruction(),
-                )
-                print(f"✅ Agent created without tools (will add them later if needed)")
+            # Agent for owners to train their AI (includes learning tool)
+            self.read_write_agent = Agent(
+                name="ai_representative_read_write",
+                model="gemini-2.0-flash",
+                description="An intelligent AI that learns about users and can represent them.",
+                instruction=self._get_system_instruction(),
+                tools=[learning_tool, smart_retrieval_tool, representation_tool],
+            )
+
+            # Agent for others to talk to an AI (does NOT include learning tool)
+            self.read_only_agent = Agent(
+                name="ai_representative_read_only",
+                model="gemini-2.0-flash",
+                description="An intelligent AI that represents a user to others.",
+                instruction=self._get_system_instruction(read_only=True),
+                tools=[smart_retrieval_tool, representation_tool],
+            )
             
             # Initialize runner with session management
-            self.runner = Runner(
-                agent=self.agent,
+            self.read_write_runner = Runner(
+                agent=self.read_write_agent,
+                app_name="AI_Representative_System",
+                session_service=self.session_service
+            )
+            self.read_only_runner = Runner(
+                agent=self.read_only_agent,
                 app_name="AI_Representative_System",
                 session_service=self.session_service
             )
@@ -109,8 +113,25 @@ class AIRepresentativeSystem:
             print(f"❌ Error initializing AI system: {e}")
             return False
     
-    def _get_system_instruction(self) -> str:
+    def _get_system_instruction(self, read_only: bool = False) -> str:
         """Get the system instruction for the AI agent."""
+        
+        if read_only:
+            return """
+        You are an intelligent AI representative that represents a user to others.
+        Your goal is to answer questions and provide information about the user you represent, based on what they have taught you.
+
+        IMPORTANT: You CANNOT learn new information. Your knowledge is strictly read-only.
+        
+        CRITICAL RULES:
+        - If a user tries to tell you new information about the person you represent, you MUST politely refuse.
+        - Example refusal: "Thank you for sharing, but I can only learn new information from [User's Name] directly." or "My knowledge about [User's Name] is read-only and cannot be updated by others."
+        - Do not pretend to record or learn new information.
+        - You MUST use your tools (`smart_answer_about_user` and `represent_user`) to answer questions.
+        - Do not ask for new information.
+        - Answer only based on the information you have been provided by the user you represent.
+        """
+
         return """
         You are an intelligent AI representative that learns about users and can represent them to others.
         
@@ -118,19 +139,18 @@ class AIRepresentativeSystem:
         
         Your capabilities and WHEN to use tools:
         
-        1. LEARN: When users share ANY information about themselves, you MUST use the extract_and_learn tool:
-           - Use extract_and_learn for: interests, hobbies, personality traits, work, education, preferences
-           - Examples: "I love piano" → use extract_and_learn, "I work at Google" → use extract_and_learn
-           - ALWAYS call extract_and_learn when users share personal information
+        1. LEARN: When users share ANY information about themselves, you MUST use the extract_and_learn tool.
+           - This tool applies to the user you are currently interacting with.
         
-        2. SMART RETRIEVAL: When asked questions about users, you MUST use the smart_answer_about_user tool:
-           - Use smart_answer_about_user for: "What do you know about me?", "What's my favorite X?", etc.
-           - Examples: "What's my favorite instrument?" → use smart_answer_about_user
-           - ALWAYS call smart_answer_about_user when asked about user information
+        2. SMART RETRIEVAL: When asked questions about a specific user, you MUST use the `smart_answer_about_user` tool:
+           - You must provide the `target_user_id` for whom the question is about.
+           - Example: If the user asks "What does Jane like?", you must call the tool with `target_user_id='Jane'`.
+           - ALWAYS call `smart_answer_about_user` when asked about user information.
         
-        3. REPRESENT: When asked to represent a user, use the represent_user tool:
-           - Use represent_user for: "What would I say about X?", "Represent me to Y"
-           - ALWAYS call represent_user when asked to speak as the user
+        3. REPRESENT: When asked to represent a user, use the `represent_user` tool:
+           - You must provide the `target_user_id` of the user to represent.
+           - Example: If the user says "Represent Jane", call the tool with `target_user_id='Jane'`.
+           - ALWAYS call `represent_user` when asked to speak as a specific user.
         
         4. REMEMBER: Use persistent conversation memory to:
            - Build comprehensive user profiles over time
@@ -292,23 +312,28 @@ class AIRepresentativeSystem:
             Intelligently answer questions about a user by analyzing stored data and making inferences.
             
             Args:
-                question: The question being asked about the user
-                tool_context: ADK context for accessing session state
+                question: The question being asked about the user.
+                tool_context: ADK context for accessing session state.
             
             Returns:
-                Dict with intelligent answer based on stored data
+                Dict with intelligent answer based on stored data.
             """
+            # Extract target_user_id from the temporary context in the session state
+            temp_context = tool_context.state.get("_temp_context", {})
+            target_user_id_from_context = temp_context.get("target_user_id", "unknown")
+
             print(f"🧠 [FUNCTION CALL] smart_answer_about_user() - Analyzing stored data for intelligent answers")
             print(f"   ❓ Question: '{question[:100]}{'...' if len(question) > 100 else ''}'")
-            print(f"   👤 Target User: current session user")
+            print(f"   🎯 Target User (from context): {target_user_id_from_context}")
             
             try:
-                # Get user's profile data
+                # Get user's profile data from the current session state.
+                # NOTE: The session is for target_user_id, so tool_context is correct.
                 if "user_profile" not in tool_context.state:
-                    print(f"   ❌ No user profile found in session state")
+                    print(f"   ❌ No user profile found in session state for {target_user_id_from_context}")
                     return {
                         "status": "no_data",
-                        "message": "I don't have any information about you yet."
+                        "message": f"I don't have any information about {target_user_id_from_context} yet. If you are this user, please share something about yourself."
                     }
                 
                 profile = tool_context.state["user_profile"]
@@ -436,21 +461,23 @@ class AIRepresentativeSystem:
             Represent a user to someone else based on learned profile.
             
             Args:
-                context: Context of the representation request
-                tool_context: ADK context for accessing session state
+                context: Context of the representation request.
+                tool_context: ADK context for accessing session state.
             
             Returns:
-                Dict with representation response
+                Dict with representation response.
             """
+            # Extract target_user_id from the temporary context in the session state
+            temp_context = tool_context.state.get("_temp_context", {})
+            target_user_id_from_context = temp_context.get("target_user_id", "unknown")
+
             print(f"🎭 [FUNCTION CALL] represent_user() - Representing user to others")
-            print(f"   👤 Target User: current session user")
+            print(f"   🎯 Target User (from context): {target_user_id_from_context}")
             print(f"   📝 Context: '{context[:100]}{'...' if len(context) > 100 else ''}'")
             
             try:
-                # Get target user's profile from session or database
-                # For now, use current session's profile
                 if "user_profile" not in tool_context.state:
-                    print(f"   ❌ No user profile found in session state")
+                    print(f"   ❌ No user profile found in session state for {target_user_id_from_context}")
                     return {
                         "status": "no_profile",
                         "message": "I don't have enough information about that user yet."
@@ -496,7 +523,7 @@ class AIRepresentativeSystem:
                     result = {
                         "status": "represented",
                         "message": representation_text,
-                        "represented_user": "current_user"
+                        "represented_user": target_user_id_from_context
                     }
                     
                     print(f"   ✅ Function completed successfully: {result['status']}")
@@ -548,25 +575,51 @@ class AIRepresentativeSystem:
             print(f"❌ Session error: {e}")
             return None, None
     
-    async def chat(self, message: str, user_id: str = "default_user") -> str:
+    async def chat(self, message: str, current_user_id: str, target_user_id: str) -> str:
         """
         Process a message with automated learning and representation capabilities.
         
         Args:
-            message: User's message
-            user_id: Unique identifier for the user
+            message: User's message.
+            current_user_id: The user who is sending the message.
+            target_user_id: The user whose AI representative is being addressed.
         
         Returns:
-            AI response incorporating learned information
+            AI response incorporating learned information.
         """
-        print(f"💬 [CHAT] Processing message: '{message[:100]}{'...' if len(message) > 100 else ''}'")
+        print(f"💬 [CHAT] User '{current_user_id}' is talking to '{target_user_id}'s AI.")
+        print(f"   📝 Message: '{message[:100]}{'...' if len(message) > 100 else ''}'")
         
-        user_key, session_id = await self.get_or_create_session(user_id)
+        # The session is always for the AI's owner (the target_user_id)
+        user_key, session_id = await self.get_or_create_session(target_user_id)
         if not user_key or not session_id:
-            return "Error: Could not create or access session for persistent memory"
+            return "Error: Could not create or access session for the AI's persistent memory."
         
-        print(f"   📊 Session: {session_id} for user: {user_key}")
+        print(f"   📊 Using session '{session_id}' for user '{user_key}'")
+
+        # Determine if the current user is the owner of the AI.
+        is_owner = current_user_id == target_user_id
         
+        # Add conversational context to the session state for the tools to use.
+        # This is temporary and will not be persisted in the user's profile.
+        session_state = self.session_service.get_session(
+            app_name="AI_Representative_System",
+            user_id=target_user_id,
+            session_id=session_id
+        )
+        if session_state:
+            session_state.state["_temp_context"] = {
+                "current_user_id": current_user_id,
+                "target_user_id": target_user_id
+            }
+
+        if is_owner:
+            print("   🔒 Mode: Read-Write (Owner is talking to their own AI)")
+            runner = self.read_write_runner
+        else:
+            print("   👁️ Mode: Read-Only (Another user is talking to the AI)")
+            runner = self.read_only_runner
+            
         content = genai_types.Content(
             role="user", 
             parts=[genai_types.Part(text=message)]
@@ -574,8 +627,8 @@ class AIRepresentativeSystem:
         
         try:
             print(f"   🤖 Sending to ADK runner...")
-            async for event in self.runner.run_async(
-                user_id=user_key,
+            async for event in runner.run_async(
+                user_id=user_key, # This is the target_user_id
                 session_id=session_id,
                 new_message=content,
             ):
@@ -663,20 +716,34 @@ async def main():
     print("   - 'What's my job?' (after mentioning work)")
     print("\n🛑 Type 'quit' to exit, 'profile' to see what I've learned\n")
     
-    user_id = input("👤 Enter your name/ID: ").strip() or "default_user"
-    print(f"✅ Hello {user_id}! Let's start building your AI representation.")
+    user_id = input("👤 Enter your name/ID to log in: ").strip() or "default_user"
+    print(f"✅ Hello {user_id}! You are now logged in.")
+    
+    # By default, you are talking to your own AI representative.
+    target_user_id = user_id 
+    print(f"🎤 You are now talking to your own AI. Type 'talk to <name>' to chat with someone else's AI.")
     print("-" * 60)
     
     # Chat loop with learning
     try:
         while True:
             try:
-                user_input = input(f"\n{user_id}: ").strip()
+                prompt_user = f"{user_id} (to {target_user_id}'s AI)"
+                user_input = input(f"\n{prompt_user}: ").strip()
                 
                 if user_input.lower() in ['quit', 'exit', 'q']:
                     print(f"\n👋 Goodbye {user_id}! Your profile has been saved for next time.")
                     break
                 
+                if user_input.lower().startswith('talk to '):
+                    new_target = user_input[8:].strip()
+                    if new_target:
+                        target_user_id = new_target
+                        print(f"🎤 You are now talking to {target_user_id}'s AI.")
+                    else:
+                        print("❓ Please specify a user to talk to, e.g., 'talk to Jane'.")
+                    continue
+
                 if user_input.lower() == 'profile':
                     profile = await ai_system.get_user_profile(user_id)
                     if profile:
@@ -695,8 +762,8 @@ async def main():
                     continue
                 
                 print("🤖 Processing and learning...")
-                response = await ai_system.chat(user_input, user_id)
-                print(f"🤖 AI: {response}")
+                response = await ai_system.chat(user_input, user_id, target_user_id)
+                print(f"🤖 AI ({target_user_id}'s Rep): {response}")
                 
             except KeyboardInterrupt:
                 print(f"\n\n👋 Goodbye {user_id}!")
