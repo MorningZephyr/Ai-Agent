@@ -1,6 +1,6 @@
 # AI Representative System
 
-A simple, intelligent AI system that learns about users through conversation and can represent them to others.
+A multi-user AI system where each user can train their own AI representative that others can interact with safely.
 
 ## Features
 
@@ -8,6 +8,8 @@ A simple, intelligent AI system that learns about users through conversation and
 - 💡 **Smart Inference**: Makes intelligent connections from stored information
 - 💾 **Persistent Memory**: Remembers information across conversations using PostgreSQL
 - 🎭 **User Representation**: Can represent users based on learned knowledge
+- 👥 **Multi-User Support**: Each user has their own AI representative
+- 🔒 **Read-Only Protection**: Others can chat with your AI but cannot modify your data
 
 ## Quick Start
 
@@ -45,15 +47,35 @@ python web_server.py
 
 ## Usage Examples
 
-### Learning & Inference
+### Training Your Own AI
 ```
-You: I love playing piano and guitar
-AI: I've learned that you like playing piano and guitar.
+Zhen: I love playing piano and basketball
+AI: I've learned that you like playing piano and basketball.
 
-You: What do you know about me?
-AI: I know that you like playing piano and guitar. Based on this, 
-    you seem to have an interest in musical instruments.
+Zhen: What do you know about me?
+AI: I know that you like playing piano and basketball. Based on this, 
+    you seem to have interests in music and sports.
 ```
+
+### Multi-User Interactions
+```
+# Bob logs in and talks to Zhen's AI
+Bob: talk to Zhen
+System: You are now talking to Zhen's AI.
+
+Bob: What does Zhen like?
+Zhen's AI: Zhen likes playing the piano and basketball.
+
+Bob: He also likes guitar
+Zhen's AI: Thank you for sharing, but I can only learn new 
+          information from Zhen directly.
+```
+
+### Read-Only Protection
+- ✅ **Users can access** other people's AI representatives
+- ✅ **Users can ask questions** about what others like
+- ❌ **Users cannot modify** other people's profiles
+- ❌ **Users cannot add false information** about others
 
 ### Persistent Memory
 Information is remembered across conversations using PostgreSQL and ADK's session framework.
@@ -79,10 +101,11 @@ backend/
 
 ## How It Works
 
-1. **Learning**: AI automatically extracts knowledge from conversations
-2. **Storage**: Information stored in PostgreSQL via ADK sessions
-3. **Retrieval**: Smart inference engine makes connections from stored data
-4. **Representation**: AI can represent users based on learned profile
+1. **User Login**: Each user gets their own AI representative
+2. **Learning Mode**: When users talk to their own AI, it learns and updates their profile
+3. **Read-Only Mode**: When users talk to someone else's AI, they can ask questions but cannot modify data
+4. **Smart Protection**: The system automatically prevents unauthorized profile modifications
+5. **Cross-User Discovery**: Users can explore and interact with other AI representatives safely
 
 ---
 
