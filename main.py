@@ -24,19 +24,10 @@ from google.genai import Client, types as genai_types
 # Load environment variables first
 load_dotenv()
 
-# Import our new configuration system
+# Import our refactored components
 from config import get_settings
+from models import UserProfile, ExtractedInfo
 # Note: ADK tools are registered differently - we'll use the function directly
-
-@dataclass
-class UserProfile:
-    """Represents a learned user profile."""
-    user_id: str
-    interests: Dict[str, Any]
-    personality_traits: List[str]
-    communication_style: str
-    learned_facts: Dict[str, Dict[str, Any]]
-    last_updated: str
 
 class AIRepresentativeSystem:
     """
@@ -189,14 +180,12 @@ class AIRepresentativeSystem:
             try:
                 # Get or create user profile in session state
                 if "user_profile" not in tool_context.state:
-                    tool_context.state["user_profile"] = {
-                        "interests": {},
-                        "personality_traits": [],
-                        "communication_style": "friendly",
-                        "learned_facts": {},
-                        "last_updated": datetime.now().isoformat()
-                    }
-                    print(f"   📊 Created new user profile")
+                    # In read-write mode, the session belongs to the user who is learning
+                    # Get the user_id from the invocation context (which has the session info)
+                    user_id = tool_context.invocation_context.user_id
+                    empty_profile = UserProfile.create_empty(user_id)
+                    tool_context.state["user_profile"] = empty_profile.to_dict()
+                    print(f"   📊 Created new user profile for {user_id}")
                 else:
                     print(f"   📊 Using existing user profile")
                 
@@ -558,17 +547,13 @@ class AIRepresentativeSystem:
                 return user_id, session_id
             else:
                 # Create new session with initial user profile
+                # Use the refactored UserProfile.create_empty method
+                empty_profile = UserProfile.create_empty(user_id)
                 new_session = self.session_service.create_session(
                     app_name=self.app_name,
                     user_id=user_id,
                     state={
-                        "user_profile": {
-                            "interests": {},
-                            "personality_traits": [],
-                            "communication_style": "",
-                            "learned_facts": {},
-                            "last_updated": ""
-                        }
+                        "user_profile": empty_profile.to_dict()
                     }
                 )
                 print(f"✅ Created new session with fresh user profile")
@@ -674,14 +659,9 @@ class AIRepresentativeSystem:
                 # Note: This would need to be implemented based on ADK session API
                 profile_data = session.state.get("user_profile", {})
                 
-                return UserProfile(
-                    user_id=user_id,
-                    interests=profile_data.get("interests", {}),
-                    personality_traits=profile_data.get("personality_traits", []),
-                    communication_style=profile_data.get("communication_style", "friendly"),
-                    learned_facts=profile_data.get("learned_facts", {}),
-                    last_updated=profile_data.get("last_updated", "")
-                )
+                # Use the refactored UserProfile.from_dict method
+                profile_data["user_id"] = user_id
+                return UserProfile.from_dict(profile_data)
             
         except Exception as e:
             print(f"Error getting user profile: {e}")
