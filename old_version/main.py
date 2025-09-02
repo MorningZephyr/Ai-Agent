@@ -19,10 +19,11 @@ from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
 from google.adk.tools.tool_context import ToolContext
 from google.genai import Client, types as genai_types
-
-# Import our new configuration system
-from config import get_settings
+from dotenv import load_dotenv
 # Note: ADK tools are registered differently - we'll use the function directly
+
+# Load environment variables
+load_dotenv()
 
 @dataclass
 class UserProfile:
@@ -41,19 +42,19 @@ class AIRepresentativeSystem:
     """
     
     def __init__(self):
-        # Get configuration from our new settings system
-        self.settings = get_settings()
-        self.db_url = self.settings.db_url
-        self.google_api_key = self.settings.google_api_key
-        self.app_name = self.settings.app_name
-        self.model_name = self.settings.model_name
-        
+        self.db_url = os.getenv("DB_URL", "postgresql://zhen_bot_user:your_password@localhost:5432/zhen_bot")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.session_service: Optional[DatabaseSessionService] = None
         self.read_write_agent: Optional[Agent] = None
         self.read_only_agent: Optional[Agent] = None
         self.read_write_runner: Optional[Runner] = None
         self.read_only_runner: Optional[Runner] = None
         self.client: Optional[Client] = None
+        
+        if not self.google_api_key:
+            raise ValueError("GOOGLE_API_KEY environment variable is required")
+        if not self.db_url:
+            raise ValueError("DB_URL environment variable is required")
     
     async def initialize(self) -> bool:
         """Initialize the AI system with database and agent."""
@@ -78,7 +79,7 @@ class AIRepresentativeSystem:
             # Agent for owners to train their AI (includes learning tool)
             self.read_write_agent = Agent(
                 name="ai_representative_read_write",
-                model=self.model_name,
+                model="gemini-2.0-flash",
                 description="An intelligent AI that learns about users and can represent them.",
                 instruction=self._get_system_instruction(),
                 tools=[learning_tool, smart_retrieval_tool, representation_tool],
@@ -87,7 +88,7 @@ class AIRepresentativeSystem:
             # Agent for others to talk to an AI (does NOT include learning tool)
             self.read_only_agent = Agent(
                 name="ai_representative_read_only",
-                model=self.model_name,
+                model="gemini-2.0-flash",
                 description="An intelligent AI that represents a user to others.",
                 instruction=self._get_system_instruction(read_only=True),
                 tools=[smart_retrieval_tool, representation_tool],
@@ -96,12 +97,12 @@ class AIRepresentativeSystem:
             # Initialize runner with session management
             self.read_write_runner = Runner(
                 agent=self.read_write_agent,
-                app_name=self.app_name,
+                app_name="AI_Representative_System",
                 session_service=self.session_service
             )
             self.read_only_runner = Runner(
                 agent=self.read_only_agent,
-                app_name=self.app_name,
+                app_name="AI_Representative_System",
                 session_service=self.session_service
             )
             
@@ -219,7 +220,7 @@ class AIRepresentativeSystem:
                 
                 print(f"   🤖 Calling Gemini AI for knowledge extraction...")
                 response = self.client.models.generate_content(
-                    model=self.model_name,
+                    model="gemini-2.0-flash",
                     contents=[genai_types.Content(
                         role="user", 
                         parts=[genai_types.Part.from_text(text=extraction_prompt)]
@@ -397,7 +398,7 @@ class AIRepresentativeSystem:
                 
                 print(f"   🤖 Calling Gemini AI for intelligent analysis...")
                 response = self.client.models.generate_content(
-                    model=self.model_name,
+                    model="gemini-2.0-flash",
                     contents=[genai_types.Content(
                         role="user",
                         parts=[genai_types.Part.from_text(text=analysis_prompt)]
@@ -508,7 +509,7 @@ class AIRepresentativeSystem:
                 """
                 
                 response = self.client.models.generate_content(
-                    model=self.model_name,
+                    model="gemini-2.0-flash",
                     contents=[genai_types.Content(
                         role="user",
                         parts=[genai_types.Part.from_text(text=representation_prompt)]
@@ -544,7 +545,7 @@ class AIRepresentativeSystem:
         try:
             # Try to get existing session for persistent memory
             existing_sessions = self.session_service.list_sessions(
-                app_name=self.app_name,
+                app_name="AI_Representative_System",
                 user_id=user_id
             )
             
@@ -555,7 +556,7 @@ class AIRepresentativeSystem:
             else:
                 # Create new session with initial user profile
                 new_session = self.session_service.create_session(
-                    app_name=self.app_name,
+                    app_name="AI_Representative_System",
                     user_id=user_id,
                     state={
                         "user_profile": {
@@ -602,7 +603,7 @@ class AIRepresentativeSystem:
         # Add conversational context to the session state for the tools to use.
         # This is temporary and will not be persisted in the user's profile.
         session_state = self.session_service.get_session(
-            app_name=self.app_name,
+            app_name="AI_Representative_System",
             user_id=target_user_id,
             session_id=session_id
         )
@@ -660,7 +661,7 @@ class AIRepresentativeSystem:
         """Get the current learned profile for a user."""
         try:
             existing_sessions = self.session_service.list_sessions(
-                app_name=self.app_name,
+                app_name="AI_Representative_System",
                 user_id=user_id
             )
             
