@@ -48,7 +48,7 @@ This improves agent performance, developer experience, and project maintainabili
 - Tools: function shape and docstrings
   - Expose tools as plain Python functions (or simple wrappers) with explicit parameters plus `ToolContext`.
   - Return structured dictionaries with clear fields like `status`, `message`, and result payloads. Avoid raising in normal flows; surface errors in the return shape.
-  - Write rich docstrings. Include: purpose, args with types, return schema, side effects (what keys in `ToolContext.state` are read/written), and examples if non-trivial.
+  - Write rich docstrings. Include: purpose, args with types, return schema, side effects (what keys in `ToolContext.state` are d sread/written), and examples if non-trivial.
   - Keep tool logic deterministic and idempotent when possible; clearly note non-idempotent behavior.
 
 - ToolContext state conventions
